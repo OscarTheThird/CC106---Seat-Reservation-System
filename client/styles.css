@@ -1,0 +1,110 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body, html {
+  height: 100%;
+  font-family: 'Georgia', serif;
+}
+
+.container {
+  position: relative;
+  height: 100vh;
+  background: linear-gradient(to right, #7a4b1f, #3b220e);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  
+}
+
+.content {
+  text-align: center;
+  z-index: 2;
+  color: white;
+  position: relative;
+}
+
+.boxes {
+  display: flex;
+  flex-direction: column; /* Stack vertically */
+  gap: 2rem;
+  justify-content: center;
+  align-items: center;
+  margin-top: 1rem;
+  max-width: 320px
+}
+
+
+/* Optional: distinguish title box and login box if needed */
+.title-box,
+.login-box {
+  background-color: rgba(255, 255, 255, 0.1); /* semi-transparent */
+  backdrop-filter: blur(10px);
+  padding: 2rem 3rem;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 3;
+  position: relative;
+  text-align: center;
+  min-width: 250px;
+}
+
+/* Space inside boxes */
+.title-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.main-title {
+  font-size: 4rem;
+  font-weight: bold;
+  line-height: 1.2;
+  margin-bottom: 2rem;
+  padding: 0;
+}
+
+.login-button {
+  display: block;
+  margin: 0 auto 1rem auto;
+  padding: 0.6rem 2rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #f0f0f0;
+  color: black;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.login-button:hover {
+  background-color: #e4e4e4;
+}
+
+.register-text {
+  font-size: 0.9rem;
+  color: #fff;
+  margin-top: 0.5rem;
+}
+
+
+.chair-img {
+  position: absolute;
+  bottom: 0;
+  right: 5%;
+  width: 350px;
+  max-width: 40%;
+  z-index: 1;
+  opacity: 0.95;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
