@@ -1,11 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Seat Reservation</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@300;400&display=swap" rel="stylesheet">
 </head>
 <body>
-    
-</body>
+
+  <!-- Background Circle (absolute) -->
+  <div class="circle-shape"></div>
+
+  <!-- Chair Image (absolute) -->
+  <img src="SOFA.png" alt="Chair Placeholder" class="chair-image" />
+
+  <!-- Main Content (relative) -->
+  <div class="main-container">
+    <p class="subtitle">SEAT RESERVATION</p>
+    <div class="booking-container">
+      <h1 class="title">BOOK<br><span>NOW</span></h1>
+    </div> 
+    <div class="btn-group">
+      <button onclick="login()" class="login-btn">Login</button>
+    </div>
+    <p class="account-text">
+      Already have an account? <a href="#" class="register-link">Register now</a>
+    </p>
+  </div>
+  
+  <script src="script.js"></script>
+
+</script>
+</body> 
 </html>

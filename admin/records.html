@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reservation Sidebar</title>
+        <link rel="stylesheet" href="records.css">
+    </head>
+    <body>
+        <!-- Records Page Content -->
+        <div id="records-page" class="page-content">
+            <div class="records-container">
+                <!-- Page Header -->
+                <header class="page-header">
+                    <div class="header-content">
+                        <h1>Records & History</h1>
+                        <p>View and manage reservation records, payment history, and system logs</p>
+                    </div>
+                    <div class="header-actions">
+                        <button class="export-btn" id="exportCsvBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7,10 12,15 17,10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Export CSV
+                        </button>
+                        <button class="export-btn secondary" id="exportPdfBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14,2 14,8 20,8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                            </svg>
+                            Export PDF
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Filter and Search Section -->
+                <div class="filters-section">
+                    <div class="filter-group">
+                        <label for="recordType">Record Type:</label>
+                        <select id="recordType">
+                            <option value="all">All Records</option>
+                            <option value="reservations">Reservations</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="no-show">No-Shows</option>
+                            <option value="payments">Payments</option>
+                            <option value="logs">System Logs</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="dateRange">Date Range:</label>
+                        <select id="dateRange">
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="quarter">This Quarter</option>
+                            <option value="year">This Year</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group custom-date-range" id="customDateRange" style="display: none;">
+                        <label for="startDate">From:</label>
+                        <input type="date" id="startDate">
+                        <label for="endDate">To:</label>
+                        <input type="date" id="endDate">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="searchInput">Search:</label>
+                        <input type="text" id="searchInput" placeholder="Search by customer, seat, or ID...">
+                    </div>
+
+                    <div class="filter-actions">
+                        <button class="filter-btn" id="applyFilters">Apply Filters</button>
+                        <button class="filter-btn secondary" id="clearFilters">Clear</button>
+                    </div>
+                </div>
+
+                <!-- Summary Cards -->
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <div class="summary-icon completed">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4"></path>
+                                <circle cx="12" cy="12" r="10"></circle>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <h3>Total Reservations</h3>
+                            <p class="summary-number" id="totalReservations">1,247</p>
+                            <small>All time</small>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="summary-icon cancelled">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="15" y1="9" x2="9" y2="15"></line>
+                                <line x1="9" y1="9" x2="15" y2="15"></line>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <h3>Cancelled</h3>
+                            <p class="summary-number" id="totalCancelled">84</p>
+                            <small>6.7% rate</small>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="summary-icon no-show">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M8 12h8"></path>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <h3>No-Shows</h3>
+                            <p class="summary-number" id="totalNoShows">23</p>
+                            <small>1.8% rate</small>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="summary-icon revenue">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="1" x2="12" y2="23"></line>
+                                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <h3>Total Revenue</h3>
+                            <p class="summary-number" id="totalRevenue">₱487,250</p>
+                            <small>All time</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Records Table -->
+                <div class="records-table-container">
+                    <div class="table-header">
+                        <h2>Records History</h2>
+                        <div class="table-controls">
+                            <select id="recordsPerPage">
+                                <option value="10">10 per page</option>
+                                <option value="25" selected>25 per page</option>
+                                <option value="50">50 per page</option>
+                                <option value="100">100 per page</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table class="records-table" id="recordsTable">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" data-sort="id">
+                                        ID
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th class="sortable" data-sort="type">
+                                        Type
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th class="sortable" data-sort="customer">
+                                        Customer
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th class="sortable" data-sort="seat">
+                                        Seat
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th class="sortable" data-sort="date">
+                                        Date & Time
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th class="sortable" data-sort="status">
+                                        Status
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th class="sortable" data-sort="amount">
+                                        Amount
+                                        <svg class="sort-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6,9 12,15 18,9"></polyline>
+                                        </svg>
+                                    </th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsTableBody">
+                                <!-- Dynamic content will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination" id="pagination">
+                        <button class="page-btn" id="prevPage" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="15,18 9,12 15,6"></polyline>
+                            </svg>
+                            Previous
+                        </button>
+                        <div class="page-numbers" id="pageNumbers">
+                            <!-- Page numbers will be generated here -->
+                        </div>
+                        <button class="page-btn" id="nextPage">
+                            Next
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="9,18 15,12 9,6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Record Details Modal -->
+                <div class="modal" id="recordDetailsModal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Record Details</h3>
+                            <button class="modal-close" id="closeModal">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="modal-body" id="recordDetailsContent">
+                            <!-- Record details will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="records.js"></script>
+    </body>
+</html>
