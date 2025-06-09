@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Admin Login</title>
+    <link rel="stylesheet" href="login.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="login-container">
+        <img src="user (2).png" alt="Profile" class="profile-image" />
+        <h2>Admin</h2>
+
+        <div class="input-group">
+            <img src="user (7).png" alt="User Icon" class="icon" />
+            <div class="input-field">
+                <input type="text" placeholder="Username" id="username">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <img src="padlock.png" alt="Lock Icon" class="icon" />
+            <div class="input-field">
+                <input type="password" placeholder="Password" id="password">
+                 <img src="eye.png" alt="Show Password" class="toggle-password" onclick="togglePassword()">
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="btn" type="button" onclick="goToDashboard()">LOGIN</button>
+            <button class="btn" type="button" onclick="clearForm()">CLEAR</button>
+        </div>
+    </div>
+
+    <script src="login.js"></script>
+
+</body>
+</html>
