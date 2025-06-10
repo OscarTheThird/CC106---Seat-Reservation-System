@@ -163,5 +163,5 @@ class RecordsManager {
     }
 }
 
-// Example usage:
+
 const recordsManager = new RecordsManager();

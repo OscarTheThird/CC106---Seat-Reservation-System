@@ -1,8 +1,8 @@
-/* Records Page Styles */
 .records-container {
-    padding: 24px;
-    max-width: 1400px;
-    margin: 0 auto;
+    padding: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-y: auto; /* if sidebar has limited height */
 }
 
 /* Page Header */
@@ -17,7 +17,7 @@
 
 .header-content h1 {
     font-size: 32px;
-    font-weight: 700;
+    font-weight: 700;   
     color: #111827;
     margin: 0 0 8px 0;
 }
