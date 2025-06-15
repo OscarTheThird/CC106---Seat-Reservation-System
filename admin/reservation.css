@@ -50,7 +50,7 @@ body {
 .nav-tabs {
     display: flex;
     background: rgba(255, 255, 255, 0.9);
-    border-radius: 15px;
+    border-radius: 14px;
     padding: 10px;
     margin-bottom: 30px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
