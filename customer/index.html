@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seat Reservation - Customer</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chair me-2"></i>
+                Seat Reservation
+            </a>
+            <div class="ms-auto">
+                <a href="../admin/admin-login.html" class="btn btn-outline-light btn-sm">
+                    <i class="fas fa-user-shield me-1"></i>
+                    Admin Login
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <!-- Event Selection -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-calendar-alt me-2"></i>
+                            Select Event
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <select class="form-select" id="eventSelect">
+                            <option value="">Choose an event...</option>
+                            <!-- Events will be loaded from Firebase -->
+                        </select>
+                        <div class="mt-3" id="eventDetails" style="display: none;">
+                            <div class="row text-center">
+                                <div class="col-4">
+                                    <div class="text-muted small">Date</div>
+                                    <div class="fw-bold" id="eventDate">-</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Price</div>
+                                    <div class="fw-bold text-success" id="eventPrice">₱-</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Available</div>
+                                    <div class="fw-bold text-primary" id="availableSeats">-</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <!-- Fixed Legend -->
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Seat Legend
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="d-flex align-items-center">
+                                    <div class="seat-legend available me-2"></div>
+                                    <span>Available</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="d-flex align-items-center">
+                                    <div class="seat-legend booked me-2"></div>
+                                    <span>Booked</span>
+                                </div>
+                            </div>
+                            
+                            <div class="col-6">
+                                <div class="d-flex align-items-center">
+                                    <div class="seat-legend selected me-2"></div>
+                                    <span>Selected</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3 text-center">
+                            <small class="text-muted">
+                                <i class="fas fa-mouse-pointer me-1"></i>
+                                Click on an available seat to book
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Seat Layout -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-th me-2"></i>
+                            Seat Layout
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="eventMessage" class="alert alert-info text-center">
+                            <i class="fas fa-arrow-up me-2"></i>
+                            Please select an event to view available seats
+                        </div>
+                        <div id="seatLayout" class="seat-layout" style="display: none;">
+                            <!-- Stage -->
+                            <div class="stage mb-4">
+                                <div class="stage-label">
+                                    <i class="fas fa-music me-2"></i>
+                                    STAGE
+                                </div>
+                            </div>
+                            
+                            <!-- Seat Grid - FIXED LAYOUT -->
+                            <div class="seat-grid" id="seatGrid">
+                                <!-- Seats will be generated by JavaScript in proper 10x10 grid -->
+                            </div>
+
+                            <!-- Additional Info -->
+                            <div class="text-center mt-4">
+                                <div class="d-inline-flex align-items-center gap-3 text-muted">
+                                    <span><i class="fas fa-users me-1"></i> Total: 100 seats</span>
+                                    <span><i class="fas fa-eye me-1"></i> Best view from center</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div class="modal fade" id="bookingModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-ticket-alt me-2"></i>
+                        Complete Your Booking
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <i class="fas fa-chair fa-2x"></i>
+                            </div>
+                            <div class="col">
+                                <h6 class="mb-1">Booking Details</h6>
+                                <div>Seat: <strong id="selectedSeat"></strong></div>
+                                <div>Event: <strong id="selectedEvent"></strong></div>
+                                <div>Price: <strong class="text-success" id="selectedPrice"></strong></div>
+                            </div>
+                        </div>
+                    </div>
+                    <form id="bookingForm">
+                        <div class="mb-3">
+                            <label for="fullName" class="form-label">
+                                <i class="fas fa-user me-1"></i>
+                                Full Name
+                            </label>
+                            <input type="text" class="form-control" id="fullName" required placeholder="Enter your full name">
+                        </div>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">
+                                <i class="fas fa-envelope me-1"></i>
+                                Email
+                            </label>
+                            <input type="email" class="form-control" id="email" required placeholder="your.email@example.com">
+                        </div>
+                        <div class="mb-3">
+                            <label for="phone" class="form-label">
+                                <i class="fas fa-phone me-1"></i>
+                                Phone Number
+                            </label>
+                            <input type="tel" class="form-control" id="phone" required placeholder="+63 XXX XXX XXXX">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-success" id="confirmBooking">
+                        <i class="fas fa-check me-1"></i>
+                        Confirm Booking
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-check-circle me-2"></i>
+                        Booking Confirmed
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <i class="fas fa-check-circle text-success" style="font-size: 4rem;"></i>
+                    <h4 class="mt-3">Congratulations!</h4>
+                    <p>Your seat has been successfully booked.</p>
+                    <div class="alert alert-success">
+                        <strong>Booking Reference:</strong> <span id="bookingReference"></span>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-center">
+                    <button type="button" class="btn btn-success" data-bs-dismiss="modal">
+                        <i class="fas fa-thumbs-up me-1"></i>
+                        Great!
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Processing your booking...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="../firebase-config.js"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
