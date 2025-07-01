@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Seat Reservation System</title>
+    <title>Admin Dashboard - Seat Reservation</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="admin-styles.css" rel="stylesheet">
@@ -196,7 +196,6 @@
                                     <option value="all">All Records</option>
                                     <option value="confirmed">Confirmed</option>
                                     <option value="cancelled">Cancelled</option>
-                                    <option value="no-show">No Show</option>
                                 </select>
                             </div>
                             <div class="col-md-3">
@@ -229,25 +228,19 @@
 
                 <!-- KPIs -->
                 <div class="row mb-4">
-                    <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="col-lg-4 col-md-6 mb-3">
                         <div class="kpi-card">
                             <h4 id="totalReservations">-</h4>
                             <p>Total Reservations</p>
                         </div>
                     </div>
-                    <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="col-lg-4 col-md-6 mb-3">
                         <div class="kpi-card">
                             <h4 id="cancelledReservations">- <small>(--%)</small></h4>
                             <p>Cancelled</p>
                         </div>
                     </div>
-                    <div class="col-lg-3 col-md-6 mb-3">
-                        <div class="kpi-card">
-                            <h4 id="noShowReservations">- <small>(--%)</small></h4>
-                            <p>No-shows</p>
-                        </div>
-                    </div>
-                    <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="col-lg-4 col-md-6 mb-3">
                         <div class="kpi-card">
                             <h4 id="totalRevenue">₱-</h4>
                             <p>Total Revenue</p>
@@ -417,154 +410,4 @@
     <script type="module" src="firebase-config.js"></script>
     <script type="module" src="admin-dashboard.js"></script>
 </body>
-</html><th>ID</th>
-                                        <th>Type</th>
-                                        <th>Customer</th>
-                                        <th>Seat</th>
-                                        <th>Date & Time</th>
-                                        <th>Status</th>
-                                        <th>Amount</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="recordsTableBody">
-                                    <!-- Records will be loaded here -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Reservation Page -->
-            <div class="page-content d-none" id="reservation-page">
-                <div class="page-header">
-                    <h1 class="page-title">Reservation Management</h1>
-                    <p class="page-subtitle">Manage seat reservations and overrides</p>
-                </div>
-
-                <!-- Event Selection for Reservation -->
-                <div class="row mb-4">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <label class="form-label">Select Event</label>
-                                <select class="form-select" id="adminEventSelect">
-                                    <option value="">Choose an event...</option>
-                                    <option value="concert1">Summer Concert - July 15, 2025</option>
-                                    <option value="theater1">Theater Play - July 20, 2025</option>
-                                    <option value="sports1">Basketball Game - July 25, 2025</option>
-                                    <option value="conference1">Tech Conference - July 30, 2025</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span>Admin Actions:</span>
-                                    <div>
-                                        <button class="btn btn-warning btn-sm" id="blockSeatMode">
-                                            <i class="fas fa-ban me-1"></i>
-                                            Block Seats
-                                        </button>
-                                        <button class="btn btn-info btn-sm" id="unblockSeatMode">
-                                            <i class="fas fa-unlock me-1"></i>
-                                            Unblock Seats
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Admin Seat Layout -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-th me-2"></i>
-                            Admin Seat Layout
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="adminEventMessage" class="alert alert-info text-center">
-                            <i class="fas fa-arrow-up me-2"></i>
-                            Please select an event to manage reservations
-                        </div>
-                        <div id="adminSeatLayout" class="seat-layout" style="display: none;">
-                            <!-- Stage -->
-                            <div class="stage mb-4">
-                                <div class="stage-label">STAGE</div>
-                            </div>
-                            
-                            <!-- Seat Grid -->
-                            <div class="seat-grid" id="adminSeatGrid">
-                                <!-- Seats will be generated by JavaScript -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Event Modal -->
-    <div class="modal fade" id="addEventModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title">
-                        <i class="fas fa-plus me-2"></i>
-                        Add New Event
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="addEventForm">
-                        <div class="mb-3">
-                            <label for="eventName" class="form-label">Event Name</label>
-                            <input type="text" class="form-control" id="eventName" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="eventDate" class="form-label">Event Date</label>
-                            <input type="datetime-local" class="form-control" id="eventDate" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="eventPrice" class="form-label">Ticket Price (₱)</label>
-                            <input type="number" class="form-control" id="eventPrice" min="0" step="50" required>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i>
-                        Cancel
-                    </button>
-                    <button type="button" class="btn btn-success" id="saveEvent">
-                        <i class="fas fa-save me-1"></i>
-                        Save Event
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="firebase-config.js"></script>
-    <script type="module" src="admin-dashboard.js"></script>
-</body>
-</html>nav-link active" data-page="dashboard">
-                    <i class="fas fa-tachometer-alt"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="#" class="nav-link" data-page="records">
-                    <i class="fas fa-file-alt"></i>
-                    <span>Records</span>
-                </a>
-                <a href="#" class="nav-link" data-page="reservation">
-                    <i class="fas fa-calendar-check"></i>
-                    <span>Reservation</span>
-                </a>
-                <a href="#" class="
+</html>

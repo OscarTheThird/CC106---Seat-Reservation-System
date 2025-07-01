@@ -6,6 +6,7 @@ class AdminDashboard {
         this.events = {};
         this.bookings = [];
         this.allBookings = [];
+        this.filteredBookings = []; // Add filtered bookings array
         this.firebaseService = null;
         this.currentEventId = null;
         this.currentEventData = null;
@@ -78,11 +79,13 @@ class AdminDashboard {
             if (result && result.success) {
                 this.allBookings = result.bookings;
                 this.bookings = result.bookings;
+                this.filteredBookings = result.bookings; // Initialize filtered bookings
                 this.dataLoaded.bookings = true;
                 return true;
             }
             this.allBookings = [];
             this.bookings = [];
+            this.filteredBookings = [];
             this.dataLoaded.bookings = true;
             return true;
         } catch (error) {
@@ -159,9 +162,11 @@ class AdminDashboard {
         this.firebaseService.onBookingsChange((bookings) => {
             this.allBookings = bookings;
             this.bookings = bookings;
+            this.filteredBookings = bookings;
             if (this.currentPage === 'dashboard') {
                 this.updateStatCards();
                 this.loadRecentBookings();
+                this.loadRecentActivity();
             } else if (this.currentPage === 'records') {
                 this.loadRecordsData();
             } else if (this.currentPage === 'reservation' && this.currentEventId) {
@@ -336,7 +341,7 @@ class AdminDashboard {
                 setTimeout(() => {
                     this.loadEventsAsync().then(() => {
                         this.handleEventsLoaded();
-                        this.loadDataProgressively(); // Optionally re-load all data
+                        this.loadDataProgressively();
                     });
                 }, 500);
             } else {
@@ -354,11 +359,17 @@ class AdminDashboard {
             booking.createdAt,
             booking.timestamp,
             booking.dateCreated,
-            booking.bookingDate
+            booking.bookingDate,
+            booking.updatedAt
         ];
         
         for (const dateValue of possibleDates) {
             if (dateValue) {
+                // Handle Firebase Timestamp objects
+                if (dateValue.seconds) {
+                    return new Date(dateValue.seconds * 1000);
+                }
+                // Handle regular date strings/objects
                 const date = new Date(dateValue);
                 if (!isNaN(date.getTime())) {
                     return date;
@@ -370,86 +381,207 @@ class AdminDashboard {
         return new Date();
     }
 
-    loadRecentBookings() {
-        const container = document.getElementById('upcomingReservations');
-        if (!container) return;
+    // Update the loadRecentBookings method to use enhanced styling
+loadRecentBookings() {
+    const container = document.getElementById('upcomingReservations');
+    if (!container) return;
+    
+    if (this.allBookings.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-calendar-times text-muted" style="font-size: 2.5rem; opacity: 0.5;"></i>
+                <p class="text-muted mt-3 mb-0">No upcoming reservations</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const now = new Date();
+    const upcomingBookings = this.allBookings
+        .filter(booking => {
+            if (booking.status !== 'confirmed') return false;
+            const event = this.events[booking.eventId];
+            if (!event || !event.date) return false;
+            const eventDate = new Date(event.date);
+            return eventDate >= now;
+        })
+        .sort((a, b) => {
+            const eventA = this.events[a.eventId];
+            const eventB = this.events[b.eventId];
+            if (!eventA || !eventB) return 0;
+            const dateA = new Date(eventA.date);
+            const dateB = new Date(eventB.date);
+            return dateA - dateB;
+        })
+        .slice(0, 8); // Show more items since we have better layout
+    
+    if (upcomingBookings.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-calendar-times text-muted" style="font-size: 2.5rem; opacity: 0.5;"></i>
+                <p class="text-muted mt-3 mb-0">No upcoming reservations</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = upcomingBookings.map(booking => {
+        const event = this.events[booking.eventId];
+        const eventName = event?.name || 'Unknown Event';
+        const eventDate = this.formatEventDate(event.date);
         
-        if (this.allBookings.length === 0) {
-            container.innerHTML = '<p class="text-muted text-center">No recent bookings found</p>';
-            return;
-        }
-        
-        const recentBookings = this.allBookings
-            .filter(booking => booking.status === 'confirmed')
-            .sort((a, b) => {
-                const dateA = this.getBookingDate(a);
-                const dateB = this.getBookingDate(b);
-                return dateB - dateA;
-            })
-            .slice(0, 5);
-        
-        container.innerHTML = recentBookings.map(booking => {
-            const eventName = this.events[booking.eventId]?.name || 'Unknown Event';
-            const bookingDate = this.getBookingDate(booking);
-            
-            return `
-                <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                    <div>
-                        <strong>${booking.fullName}</strong><br>
-                        <small class="text-muted">Seat ${booking.seatNumber} • ${eventName}</small>
+        return `
+            <div class="reservation-item">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="me-3">
+                                <i class="fas fa-user-circle text-primary" style="font-size: 1.5rem;"></i>
+                            </div>
+                            <div>
+                                <h6 class="mb-0 font-weight-bold">${booking.fullName}</h6>
+                                <small class="text-muted">
+                                    <i class="fas fa-chair me-1"></i>Seat ${booking.seatNumber} • ${eventName}
+                                </small>
+                            </div>
+                        </div>
                     </div>
                     <div class="text-end">
-                        <small class="text-primary">${bookingDate.toLocaleDateString()}</small>
+                        <span class="badge bg-primary px-3 py-2" style="font-size: 0.8rem;">
+                            <i class="fas fa-calendar me-1"></i>${eventDate}
+                        </span>
                     </div>
                 </div>
-            `;
-        }).join('');
-    }
-
-    loadRecentActivity() {
-        const container = document.getElementById('recentActivity');
-        if (!container) return;
-        
-        if (this.allBookings.length === 0) {
-            container.innerHTML = '<p class="text-muted text-center">No recent activity</p>';
-            return;
-        }
-        
-        const activities = this.allBookings
-            .sort((a, b) => {
-                const dateA = this.getBookingDate(a);
-                const dateB = this.getBookingDate(b);
-                return dateB - dateA;
-            })
-            .slice(0, 5)
-            .map(booking => {
-                const date = this.getBookingDate(booking);
-                const timeAgo = this.getTimeAgo(date);
-                
-                return {
-                    type: booking.status,
-                    icon: booking.status === 'confirmed' ? 'fas fa-check-circle' : 'fas fa-clock',
-                    color: booking.status === 'confirmed' ? 'bg-success' : 'bg-warning',
-                    text: `Booking ${booking.status}`,
-                    details: `${booking.fullName} - Seat ${booking.seatNumber}`,
-                    time: timeAgo
-                };
-            });
-        
-        container.innerHTML = activities.map(activity => `
-            <div class="activity-item">
-                <div class="activity-icon ${activity.color}">
-                    <i class="${activity.icon}"></i>
-                </div>
-                <div class="activity-content">
-                    <div><strong>${activity.text}</strong></div>
-                    <div class="text-muted">${activity.details}</div>
-                </div>
-                <div class="activity-time">${activity.time}</div>
             </div>
-        `).join('');
-    }
+        `;
+    }).join('');
+}
 
+// Update the loadRecentActivity method for bigger, better content
+loadRecentActivity() {
+    const container = document.getElementById('recentActivity');
+    if (!container) return;
+    
+    if (this.allBookings.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-clock"></i>
+                <p>No recent activity to display</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const activities = this.allBookings
+        .sort((a, b) => {
+            const dateA = this.getBookingDate(a);
+            const dateB = this.getBookingDate(b);
+            return dateB - dateA;
+        })
+        .slice(0, 10) // Show more items for scrolling
+        .map(booking => {
+            const bookingDate = this.getBookingDate(booking);
+            const timeAgo = this.getTimeAgo(bookingDate);
+            const event = this.events[booking.eventId];
+            
+            return {
+                type: booking.status,
+                icon: booking.status === 'confirmed' ? 'fas fa-check-circle' : 
+                      booking.status === 'cancelled' ? 'fas fa-times-circle' : 'fas fa-clock',
+                color: booking.status === 'confirmed' ? 'bg-success' : 
+                       booking.status === 'cancelled' ? 'bg-danger' : 'bg-warning',
+                text: booking.status === 'confirmed' ? 'Booking Confirmed' : 
+                      booking.status === 'cancelled' ? 'Booking Cancelled' : 'Booking Pending',
+                customerName: booking.fullName,
+                email: booking.email || 'No email provided',
+                phone: booking.phone || 'No phone provided',
+                seatNumber: booking.seatNumber,
+                eventName: event ? event.name : 'Unknown Event',
+                amount: booking.price ? `₱${booking.price.toLocaleString()}` : 'N/A',
+                time: timeAgo
+            };
+        });
+    
+    if (activities.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-clock"></i>
+                <p>No recent activity to display</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = activities.map(activity => `
+        <div class="activity-item">
+            <div class="activity-icon ${activity.color}">
+                <i class="${activity.icon}"></i>
+            </div>
+            <div class="activity-content">
+                <strong>${activity.text}</strong>
+                <div class="text-muted">
+                    <i class="fas fa-user me-1"></i>${activity.customerName} • 
+                    <i class="fas fa-chair me-1"></i>Seat ${activity.seatNumber}
+                </div>
+                <div class="text-muted small">
+                    <i class="fas fa-calendar me-1"></i>${activity.eventName} • 
+                    <i class="fas fa-money-bill me-1"></i>${activity.amount}
+                </div>
+            </div>
+            <div class="activity-time">${activity.time}</div>
+        </div>
+    `).join('');
+}
+
+// Update the updateSeatMiniGrid method for enhanced styling
+updateSeatMiniGrid() {
+    const miniGrid = document.getElementById('seatMiniGrid');
+    if (!miniGrid) return;
+    
+    // Clear the container first
+    miniGrid.innerHTML = '';
+    
+    const totalEvents = Object.keys(this.events).length;
+    
+    if (totalEvents === 0) {
+        miniGrid.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-calendar-plus text-muted" style="font-size: 2rem; opacity: 0.5;"></i>
+                <p class="text-muted mt-2 mb-0 small">No events to display</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const firstEvent = Object.values(this.events)[0];
+    if (firstEvent) {
+        const eventBookings = this.allBookings.filter(
+            booking => booking.eventId === firstEvent.id && booking.status === 'confirmed'
+        );
+        const bookedSeats = eventBookings.map(b => b.seatNumber);
+        
+        // Create mini seats with enhanced styling
+        const fragment = document.createDocumentFragment();
+        for (let i = 1; i <= 20; i++) {
+            const miniSeat = document.createElement('div');
+            miniSeat.className = `mini-seat ${bookedSeats.includes(i) ? 'booked' : 'available'}`;
+            miniSeat.textContent = i;
+            miniSeat.title = `Seat ${i} - ${bookedSeats.includes(i) ? 'Booked' : 'Available'}`;
+            fragment.appendChild(miniSeat);
+        }
+        miniGrid.appendChild(fragment);
+        
+        // Add enhanced label
+        const label = document.createElement('div');
+        label.className = 'seat-grid-label';
+        label.innerHTML = `
+            <i class="fas fa-info-circle me-1"></i>
+            <strong>${firstEvent.name}</strong><br>
+            <small>First 20 seats preview</small>
+        `;
+        miniGrid.appendChild(label);
+    }
+}
     updateEventsOverview() {
         const container = document.getElementById('eventsOverview');
         if (!container) return;
@@ -501,25 +633,25 @@ class AdminDashboard {
             }
             return;
         }
+        this.filteredBookings = [...this.allBookings]; // Reset filters when loading
         this.updateKPIs();
         this.loadRecordsTable();
         this.updateEventFilter();
     }
 
     updateKPIs() {
-        const totalReservations = this.allBookings.length;
-        const confirmed = this.allBookings.filter(b => b.status === 'confirmed').length;
-        const cancelled = this.allBookings.filter(b => b.status === 'cancelled').length;
-        const noShow = this.allBookings.filter(b => b.status === 'no-show').length;
-        const totalRevenue = this.allBookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + (b.price || 0), 0);
+        // Use filtered bookings for KPIs when filters are applied
+        const bookingsToAnalyze = this.filteredBookings;
+        const totalReservations = bookingsToAnalyze.length;
+        const confirmed = bookingsToAnalyze.filter(b => b.status === 'confirmed').length;
+        const cancelled = bookingsToAnalyze.filter(b => b.status === 'cancelled').length;
+        const totalRevenue = bookingsToAnalyze.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + (b.price || 0), 0);
         const cancelledPercent = totalReservations > 0 ? ((cancelled / totalReservations) * 100).toFixed(1) : 0;
-        const noShowPercent = totalReservations > 0 ? ((noShow / totalReservations) * 100).toFixed(1) : 0;
+        
         this.updateElement('totalReservations', totalReservations);
         const cancelledEl = document.getElementById('cancelledReservations');
-        const noShowEl = document.getElementById('noShowReservations');
         const revenueEl = document.getElementById('totalRevenue');
         if (cancelledEl) cancelledEl.innerHTML = `${cancelled} <small>(${cancelledPercent}%)</small>`;
-        if (noShowEl) noShowEl.innerHTML = `${noShow} <small>(${noShowPercent}%)</small>`;
         if (revenueEl) revenueEl.textContent = `₱${totalRevenue.toLocaleString()}`;
     }
 
@@ -541,12 +673,12 @@ class AdminDashboard {
         const tbody = document.getElementById('recordsTableBody');
         if (!tbody) return;
         
-        if (this.allBookings.length === 0) {
+        if (this.filteredBookings.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No booking records found</td></tr>';
             return;
         }
         
-        tbody.innerHTML = this.allBookings.map(booking => {
+        tbody.innerHTML = this.filteredBookings.map(booking => {
             const eventName = this.events[booking.eventId]?.name || 'Unknown Event';
             const bookingDate = this.getBookingDate(booking);
             
@@ -574,27 +706,90 @@ class AdminDashboard {
         }).join('');
     }
 
+    // FIXED: Apply Record Filters
+    applyRecordFilters() {
+        const recordTypeFilter = document.getElementById('recordTypeFilter')?.value || 'all';
+        const dateFrom = document.getElementById('dateFrom')?.value;
+        const dateTo = document.getElementById('dateTo')?.value;
+        const searchRecords = document.getElementById('searchRecords')?.value.toLowerCase() || '';
+
+        // Start with all bookings
+        let filtered = [...this.allBookings];
+
+        // Filter by record type (status)
+        if (recordTypeFilter !== 'all') {
+            filtered = filtered.filter(booking => booking.status === recordTypeFilter);
+        }
+
+        // Filter by date range
+        if (dateFrom) {
+            const fromDate = new Date(dateFrom);
+            fromDate.setHours(0, 0, 0, 0);
+            filtered = filtered.filter(booking => {
+                const bookingDate = this.getBookingDate(booking);
+                bookingDate.setHours(0, 0, 0, 0);
+                return bookingDate >= fromDate;
+            });
+        }
+
+        if (dateTo) {
+            const toDate = new Date(dateTo);
+            toDate.setHours(23, 59, 59, 999);
+            filtered = filtered.filter(booking => {
+                const bookingDate = this.getBookingDate(booking);
+                return bookingDate <= toDate;
+            });
+        }
+
+        // Filter by search term (customer name or seat)
+        if (searchRecords) {
+            filtered = filtered.filter(booking => {
+                const customerName = (booking.fullName || '').toLowerCase();
+                const seatNumber = `seat ${booking.seatNumber}`.toLowerCase();
+                const eventName = (this.events[booking.eventId]?.name || '').toLowerCase();
+                
+                return customerName.includes(searchRecords) || 
+                       seatNumber.includes(searchRecords) ||
+                       eventName.includes(searchRecords);
+            });
+        }
+
+        // Update filtered bookings and refresh display
+        this.filteredBookings = filtered;
+        this.updateKPIs();
+        this.loadRecordsTable();
+        
+        this.showToast(`Found ${filtered.length} records`, 'info');
+    }
+
+    // FIXED: Reset Record Filters
     resetRecordFilters() {
         const recordTypeFilter = document.getElementById('recordTypeFilter');
         const dateFrom = document.getElementById('dateFrom');
         const dateTo = document.getElementById('dateTo');
         const searchRecords = document.getElementById('searchRecords');
+        
         if (recordTypeFilter) recordTypeFilter.value = 'all';
         if (dateFrom) dateFrom.value = '';
         if (dateTo) dateTo.value = '';
         if (searchRecords) searchRecords.value = '';
+        
+        // Reset to show all bookings
+        this.filteredBookings = [...this.allBookings];
+        this.updateKPIs();
         this.loadRecordsTable();
+        
         this.showToast('Filters reset', 'info');
     }
 
     exportToCSV() {
-        if (this.allBookings.length === 0) {
+        if (this.filteredBookings.length === 0) {
             this.showError('No data to export');
             return;
         }
         const csvContent = [
             ['Booking ID', 'Customer', 'Email', 'Phone', 'Event', 'Seat', 'Date', 'Status', 'Price'],
-            ...this.allBookings.map(booking => {
+            ...this.filteredBookings.map(booking => {
                 const eventName = this.events[booking.eventId]?.name || 'Unknown Event';
                 const bookingDate = this.getBookingDate(booking);
                 return [
@@ -651,6 +846,11 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
             if (result.success) {
                 const booking = this.allBookings.find(b => b.id === bookingId);
                 if (booking) booking.status = 'cancelled';
+                
+                // Update filtered bookings as well
+                const filteredBooking = this.filteredBookings.find(b => b.id === bookingId);
+                if (filteredBooking) filteredBooking.status = 'cancelled';
+                
                 this.loadRecordsTable();
                 this.updateKPIs();
                 this.updateStatCards();
@@ -666,19 +866,65 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
     getTimeAgo(date) {
         // Ensure we have a valid date
         if (!date || isNaN(date.getTime())) {
-            return 'Recently';
+            return 'Unknown';
         }
         
         const now = new Date();
+        
+        // Handle Firebase Timestamp objects
+        if (date.seconds) {
+            date = new Date(date.seconds * 1000);
+        }
+        
+        // Calculate difference in days using date objects (not just milliseconds)
+        const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const bookingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const diffDays = Math.floor((nowDate - bookingDate) / (1000 * 60 * 60 * 24));
+        
+        // For more precise timing within the same day
         const diffMs = now - date;
         const diffMins = Math.floor(diffMs / 60000);
         const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
         
-        if (diffMins < 1) return 'Just now';
-        else if (diffMins < 60) return `${diffMins}m ago`;
-        else if (diffHours < 24) return `${diffHours}h ago`;
-        else return `${diffDays}d ago`;
+        // Handle future dates
+        if (diffMs < 0) {
+            return 'Future';
+        }
+        
+        // Same day calculations
+        if (diffDays === 0) {
+            if (diffMins < 1) return 'Just now';
+            else if (diffMins < 60) return `${diffMins}m ago`;
+            else return `${diffHours}h ago`;
+        }
+        
+        // Different day calculations
+        if (diffDays === 1) return '1 day ago';
+        else if (diffDays < 7) return `${diffDays} days ago`;
+        else if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+        else if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+        else return `${Math.floor(diffDays / 365)} years ago`;
+    }
+
+    // Helper function to format event dates consistently
+    formatEventDate(dateString) {
+        if (!dateString) return 'Unknown Date';
+        
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return 'Invalid Date';
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const eventDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        
+        const diffDays = Math.floor((eventDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) return 'Today';
+        else if (diffDays === 1) return 'Tomorrow';
+        else if (diffDays === -1) return 'Yesterday';
+        else if (diffDays > 1 && diffDays < 7) return `In ${diffDays} days`;
+        else if (diffDays < -1 && diffDays > -7) return `${Math.abs(diffDays)} days ago`;
+        else return date.toLocaleDateString();
     }
 
     showError(message) {
@@ -756,7 +1002,9 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
                 }
                 seatGrid.appendChild(seat);
             }
-        } catch (error) {}
+        } catch (error) {
+            console.error('Error generating seat layout:', error);
+        }
     }
 }
 
