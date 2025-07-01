@@ -32,11 +32,28 @@ class AdminDashboard {
 
     showDashboard() {
         this.showLoadingStates();
+        this.updateCurrentDate();
+    }
+
+    updateCurrentDate() {
+        const today = new Date();
+        const options = { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        };
+        const formattedDate = today.toLocaleDateString('en-US', options);
+        
+        const dateElement = document.querySelector('.page-subtitle');
+        if (dateElement) {
+            dateElement.textContent = formattedDate;
+        }
     }
 
     showLoadingStates() {
         this.updateElement('availableSeats', '...');
-        this.updateElement('reservedSeats', '...');
+        this.updateElement('bookedSeats', '...');
         this.updateElement('todayRevenue', '₱...');
     }
 
@@ -133,6 +150,19 @@ class AdminDashboard {
         const adminEventSelect = document.getElementById('adminEventSelect');
         if (adminEventSelect) adminEventSelect.addEventListener('change', (e) => {
             this.handleAdminEventChange(e.target.value);
+        });
+
+        // Add seat map event selector
+        const seatMapEventSelect = document.getElementById('seatMapEventSelect');
+        if (seatMapEventSelect) seatMapEventSelect.addEventListener('change', (e) => {
+            this.handleSeatMapEventChange(e.target.value);
+        });
+
+        // Add View Full Seats button event listener
+        const viewFullSeatsBtn = document.getElementById('viewFullSeatsBtn');
+        if (viewFullSeatsBtn) viewFullSeatsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.switchPage('reservation');
         });
 
         const applyFiltersBtn = document.getElementById('applyFilters');
@@ -234,7 +264,7 @@ class AdminDashboard {
         const totalEvents = Object.keys(this.events).length;
         const totalSeats = totalEvents * 100; // 100 seats per event
         const totalAvailable = Math.max(0, totalSeats - totalConfirmedBookings);
-        const totalReserved = totalConfirmedBookings;
+        const totalBooked = totalConfirmedBookings;
         
         // Calculate total revenue from confirmed bookings
         const totalRevenue = this.allBookings
@@ -243,36 +273,70 @@ class AdminDashboard {
         
         // Update the display
         this.animateStatUpdate('availableSeats', totalAvailable);
-        this.animateStatUpdate('reservedSeats', totalReserved);
+        this.animateStatUpdate('bookedSeats', totalBooked);
         this.animateStatUpdate('todayRevenue', `₱${totalRevenue.toLocaleString()}`);
         this.updateSeatMiniGrid();
     }
 
-    updateSeatMiniGrid() {
+    // Main function that updates the seat mini grid display - UPDATED: Removed seat grid label
+    updateSeatMiniGrid(selectedEventId = null) {
         const miniGrid = document.getElementById('seatMiniGrid');
         if (!miniGrid) return;
+        
+        // Clear the container first
         miniGrid.innerHTML = '';
+        
         const totalEvents = Object.keys(this.events).length;
+        
+        // Check if there are any events
         if (totalEvents === 0) {
-            miniGrid.innerHTML = '<p class="text-muted small">No events to display</p>';
+            miniGrid.innerHTML = `
+                <div class="text-center py-3" style="grid-column: 1 / -1;">
+                    <i class="fas fa-calendar-plus text-muted" style="font-size: 1.5rem; opacity: 0.5;"></i>
+                    <p class="text-muted mt-2 mb-0 small">No events to display</p>
+                </div>
+            `;
             return;
         }
-        const firstEvent = Object.values(this.events)[0];
-        if (firstEvent) {
+        
+        // Determine which event to show
+        let eventToShow;
+        if (selectedEventId && this.events[selectedEventId]) {
+            // Use the selected event from dropdown
+            eventToShow = this.events[selectedEventId];
+        } else if (!selectedEventId) {
+            // If no event selected, show placeholder
+            this.showEmptySeatMap();
+            return;
+        } else {
+            // Invalid event ID
+            return;
+        }
+        
+        if (eventToShow) {
+            // Get all confirmed bookings for this event
             const eventBookings = this.allBookings.filter(
-                booking => booking.eventId === firstEvent.id && booking.status === 'confirmed'
+                booking => booking.eventId === eventToShow.id && booking.status === 'confirmed'
             );
+            
+            // Extract seat numbers that are booked
             const bookedSeats = eventBookings.map(b => b.seatNumber);
-            for (let i = 1; i <= 20; i++) {
+            
+            // Create 50 mini seats (5 rows x 10 columns)
+            for (let i = 1; i <= 50; i++) {
                 const miniSeat = document.createElement('div');
-                miniSeat.className = 'mini-seat';
-                miniSeat.classList.add(bookedSeats.includes(i) ? 'booked' : 'available');
+                
+                // Determine if seat is booked or available
+                const isBooked = bookedSeats.includes(i);
+                
+                // Set CSS classes and content
+                miniSeat.className = `mini-seat ${isBooked ? 'booked' : 'available'}`;
+                miniSeat.textContent = i;
+                miniSeat.title = `Seat ${i} - ${isBooked ? 'Booked' : 'Available'}`;
+                
+                // Add to grid
                 miniGrid.appendChild(miniSeat);
             }
-            const label = document.createElement('div');
-            label.className = 'small text-muted mt-2';
-            label.textContent = `${firstEvent.name} (First 20 seats)`;
-            miniGrid.appendChild(label);
         }
     }
 
@@ -294,7 +358,7 @@ class AdminDashboard {
     }
 
     updateEventSelects() {
-        const selects = document.querySelectorAll('#adminEventSelect, #eventFilter');
+        const selects = document.querySelectorAll('#adminEventSelect, #eventFilter, #seatMapEventSelect');
         selects.forEach(select => {
             if (!select) return;
             const currentValue = select.value;
@@ -382,206 +446,178 @@ class AdminDashboard {
     }
 
     // Update the loadRecentBookings method to use enhanced styling
-loadRecentBookings() {
-    const container = document.getElementById('upcomingReservations');
-    if (!container) return;
-    
-    if (this.allBookings.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-calendar-times text-muted" style="font-size: 2.5rem; opacity: 0.5;"></i>
-                <p class="text-muted mt-3 mb-0">No upcoming reservations</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const now = new Date();
-    const upcomingBookings = this.allBookings
-        .filter(booking => {
-            if (booking.status !== 'confirmed') return false;
-            const event = this.events[booking.eventId];
-            if (!event || !event.date) return false;
-            const eventDate = new Date(event.date);
-            return eventDate >= now;
-        })
-        .sort((a, b) => {
-            const eventA = this.events[a.eventId];
-            const eventB = this.events[b.eventId];
-            if (!eventA || !eventB) return 0;
-            const dateA = new Date(eventA.date);
-            const dateB = new Date(eventB.date);
-            return dateA - dateB;
-        })
-        .slice(0, 8); // Show more items since we have better layout
-    
-    if (upcomingBookings.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-calendar-times text-muted" style="font-size: 2.5rem; opacity: 0.5;"></i>
-                <p class="text-muted mt-3 mb-0">No upcoming reservations</p>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = upcomingBookings.map(booking => {
-        const event = this.events[booking.eventId];
-        const eventName = event?.name || 'Unknown Event';
-        const eventDate = this.formatEventDate(event.date);
+    loadRecentBookings() {
+        const container = document.getElementById('upcomingBookings');
+        if (!container) return;
         
-        return `
-            <div class="reservation-item">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="flex-grow-1">
-                        <div class="d-flex align-items-center mb-2">
-                            <div class="me-3">
-                                <i class="fas fa-user-circle text-primary" style="font-size: 1.5rem;"></i>
-                            </div>
-                            <div>
-                                <h6 class="mb-0 font-weight-bold">${booking.fullName}</h6>
-                                <small class="text-muted">
-                                    <i class="fas fa-chair me-1"></i>Seat ${booking.seatNumber} • ${eventName}
-                                </small>
+        if (this.allBookings.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times text-muted" style="font-size: 2.5rem; opacity: 0.5;"></i>
+                    <p class="text-muted mt-3 mb-0">No upcoming bookings</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const now = new Date();
+        const upcomingBookings = this.allBookings
+            .filter(booking => {
+                if (booking.status !== 'confirmed') return false;
+                const event = this.events[booking.eventId];
+                if (!event || !event.date) return false;
+                const eventDate = new Date(event.date);
+                return eventDate >= now;
+            })
+            .sort((a, b) => {
+                const eventA = this.events[a.eventId];
+                const eventB = this.events[b.eventId];
+                if (!eventA || !eventB) return 0;
+                const dateA = new Date(eventA.date);
+                const dateB = new Date(eventB.date);
+                return dateA - dateB;
+            })
+            .slice(0, 8); // Show more items since we have better layout
+        
+        if (upcomingBookings.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-calendar-times text-muted" style="font-size: 2.5rem; opacity: 0.5;"></i>
+                    <p class="text-muted mt-3 mb-0">No upcoming bookings</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = upcomingBookings.map(booking => {
+            const event = this.events[booking.eventId];
+            const eventName = event?.name || 'Unknown Event';
+            const eventDate = this.formatEventDate(event.date);
+            
+            return `
+                <div class="booking-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="me-3">
+                                    <i class="fas fa-user-circle text-primary" style="font-size: 1.5rem;"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0 font-weight-bold">${booking.fullName}</h6>
+                                    <small class="text-muted">
+                                        <i class="fas fa-chair me-1"></i>Seat ${booking.seatNumber} • ${eventName}
+                                    </small>
+                                </div>
                             </div>
                         </div>
+                        <div class="text-end">
+                            <span class="badge bg-primary px-3 py-2" style="font-size: 0.8rem;">
+                                <i class="fas fa-calendar me-1"></i>${eventDate}
+                            </span>
+                        </div>
                     </div>
-                    <div class="text-end">
-                        <span class="badge bg-primary px-3 py-2" style="font-size: 0.8rem;">
-                            <i class="fas fa-calendar me-1"></i>${eventDate}
-                        </span>
-                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
-}
+            `;
+        }).join('');
+    }
 
-// Update the loadRecentActivity method for bigger, better content
-loadRecentActivity() {
-    const container = document.getElementById('recentActivity');
-    if (!container) return;
-    
-    if (this.allBookings.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-clock"></i>
-                <p>No recent activity to display</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const activities = this.allBookings
-        .sort((a, b) => {
-            const dateA = this.getBookingDate(a);
-            const dateB = this.getBookingDate(b);
-            return dateB - dateA;
-        })
-        .slice(0, 10) // Show more items for scrolling
-        .map(booking => {
-            const bookingDate = this.getBookingDate(booking);
-            const timeAgo = this.getTimeAgo(bookingDate);
-            const event = this.events[booking.eventId];
-            
-            return {
-                type: booking.status,
-                icon: booking.status === 'confirmed' ? 'fas fa-check-circle' : 
-                      booking.status === 'cancelled' ? 'fas fa-times-circle' : 'fas fa-clock',
-                color: booking.status === 'confirmed' ? 'bg-success' : 
-                       booking.status === 'cancelled' ? 'bg-danger' : 'bg-warning',
-                text: booking.status === 'confirmed' ? 'Booking Confirmed' : 
-                      booking.status === 'cancelled' ? 'Booking Cancelled' : 'Booking Pending',
-                customerName: booking.fullName,
-                email: booking.email || 'No email provided',
-                phone: booking.phone || 'No phone provided',
-                seatNumber: booking.seatNumber,
-                eventName: event ? event.name : 'Unknown Event',
-                amount: booking.price ? `₱${booking.price.toLocaleString()}` : 'N/A',
-                time: timeAgo
-            };
-        });
-    
-    if (activities.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-clock"></i>
-                <p>No recent activity to display</p>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = activities.map(activity => `
-        <div class="activity-item">
-            <div class="activity-icon ${activity.color}">
-                <i class="${activity.icon}"></i>
-            </div>
-            <div class="activity-content">
-                <strong>${activity.text}</strong>
-                <div class="text-muted">
-                    <i class="fas fa-user me-1"></i>${activity.customerName} • 
-                    <i class="fas fa-chair me-1"></i>Seat ${activity.seatNumber}
-                </div>
-                <div class="text-muted small">
-                    <i class="fas fa-calendar me-1"></i>${activity.eventName} • 
-                    <i class="fas fa-money-bill me-1"></i>${activity.amount}
-                </div>
-            </div>
-            <div class="activity-time">${activity.time}</div>
-        </div>
-    `).join('');
-}
-
-// Update the updateSeatMiniGrid method for enhanced styling
-updateSeatMiniGrid() {
-    const miniGrid = document.getElementById('seatMiniGrid');
-    if (!miniGrid) return;
-    
-    // Clear the container first
-    miniGrid.innerHTML = '';
-    
-    const totalEvents = Object.keys(this.events).length;
-    
-    if (totalEvents === 0) {
-        miniGrid.innerHTML = `
-            <div class="text-center py-4">
-                <i class="fas fa-calendar-plus text-muted" style="font-size: 2rem; opacity: 0.5;"></i>
-                <p class="text-muted mt-2 mb-0 small">No events to display</p>
-            </div>
-        `;
-        return;
-    }
-    
-    const firstEvent = Object.values(this.events)[0];
-    if (firstEvent) {
-        const eventBookings = this.allBookings.filter(
-            booking => booking.eventId === firstEvent.id && booking.status === 'confirmed'
-        );
-        const bookedSeats = eventBookings.map(b => b.seatNumber);
+    // Update the loadRecentActivity method for bigger, better content
+    loadRecentActivity() {
+        const container = document.getElementById('recentActivity');
+        if (!container) return;
         
-        // Create mini seats with enhanced styling
-        const fragment = document.createDocumentFragment();
-        for (let i = 1; i <= 20; i++) {
-            const miniSeat = document.createElement('div');
-            miniSeat.className = `mini-seat ${bookedSeats.includes(i) ? 'booked' : 'available'}`;
-            miniSeat.textContent = i;
-            miniSeat.title = `Seat ${i} - ${bookedSeats.includes(i) ? 'Booked' : 'Available'}`;
-            fragment.appendChild(miniSeat);
+        if (this.allBookings.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-clock"></i>
+                    <p>No recent activity to display</p>
+                </div>
+            `;
+            return;
         }
-        miniGrid.appendChild(fragment);
         
-        // Add enhanced label
-        const label = document.createElement('div');
-        label.className = 'seat-grid-label';
-        label.innerHTML = `
-            <i class="fas fa-info-circle me-1"></i>
-            <strong>${firstEvent.name}</strong><br>
-            <small>First 20 seats preview</small>
-        `;
-        miniGrid.appendChild(label);
+        const activities = this.allBookings
+            .sort((a, b) => {
+                const dateA = this.getBookingDate(a);
+                const dateB = this.getBookingDate(b);
+                return dateB - dateA;
+            })
+            .slice(0, 10) // Show more items for scrolling
+            .map(booking => {
+                const bookingDate = this.getBookingDate(booking);
+                const timeAgo = this.getTimeAgo(bookingDate);
+                const event = this.events[booking.eventId];
+                
+                return {
+                    type: booking.status,
+                    icon: booking.status === 'confirmed' ? 'fas fa-check-circle' : 
+                          booking.status === 'cancelled' ? 'fas fa-times-circle' : 'fas fa-clock',
+                    color: booking.status === 'confirmed' ? 'bg-success' : 
+                           booking.status === 'cancelled' ? 'bg-danger' : 'bg-warning',
+                    text: booking.status === 'confirmed' ? 'Booking Confirmed' : 
+                          booking.status === 'cancelled' ? 'Booking Cancelled' : 'Booking Pending',
+                    customerName: booking.fullName,
+                    email: booking.email || 'No email provided',
+                    phone: booking.phone || 'No phone provided',
+                    seatNumber: booking.seatNumber,
+                    eventName: event ? event.name : 'Unknown Event',
+                    amount: booking.price ? `₱${booking.price.toLocaleString()}` : 'N/A',
+                    time: timeAgo
+                };
+            });
+        
+        if (activities.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-clock"></i>
+                    <p>No recent activity to display</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = activities.map(activity => `
+            <div class="activity-item">
+                <div class="activity-icon ${activity.color}">
+                    <i class="${activity.icon}"></i>
+                </div>
+                <div class="activity-content">
+                    <strong>${activity.text}</strong>
+                    <div class="text-muted">
+                        <i class="fas fa-user me-1"></i>${activity.customerName} • 
+                        <i class="fas fa-chair me-1"></i>Seat ${activity.seatNumber}
+                    </div>
+                    <div class="text-muted small">
+                        <i class="fas fa-calendar me-1"></i>${activity.eventName} • 
+                        <i class="fas fa-money-bill me-1"></i>${activity.amount}
+                    </div>
+                </div>
+                <div class="activity-time">${activity.time}</div>
+            </div>
+        `).join('');
     }
-}
+
+    // Handle seat map event selection
+    handleSeatMapEventChange(eventId) {
+        if (!eventId) {
+            this.showEmptySeatMap();
+            return;
+        }
+        this.updateSeatMiniGrid(eventId);
+    }
+
+    showEmptySeatMap() {
+        const miniGrid = document.getElementById('seatMiniGrid');
+        if (!miniGrid) return;
+        
+        miniGrid.innerHTML = `
+            <div class="text-center py-3" style="grid-column: 1 / -1;">
+                <i class="fas fa-arrow-up text-muted"></i>
+                <p class="text-muted mt-2 mb-0 small">Select an event to view seats</p>
+            </div>
+        `;
+    }
+
     updateEventsOverview() {
         const container = document.getElementById('eventsOverview');
         if (!container) return;
@@ -642,14 +678,14 @@ updateSeatMiniGrid() {
     updateKPIs() {
         // Use filtered bookings for KPIs when filters are applied
         const bookingsToAnalyze = this.filteredBookings;
-        const totalReservations = bookingsToAnalyze.length;
+        const totalBookings = bookingsToAnalyze.length;
         const confirmed = bookingsToAnalyze.filter(b => b.status === 'confirmed').length;
         const cancelled = bookingsToAnalyze.filter(b => b.status === 'cancelled').length;
         const totalRevenue = bookingsToAnalyze.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + (b.price || 0), 0);
-        const cancelledPercent = totalReservations > 0 ? ((cancelled / totalReservations) * 100).toFixed(1) : 0;
+        const cancelledPercent = totalBookings > 0 ? ((cancelled / totalBookings) * 100).toFixed(1) : 0;
         
-        this.updateElement('totalReservations', totalReservations);
-        const cancelledEl = document.getElementById('cancelledReservations');
+        this.updateElement('totalBookings', totalBookings);
+        const cancelledEl = document.getElementById('cancelledBookings');
         const revenueEl = document.getElementById('totalRevenue');
         if (cancelledEl) cancelledEl.innerHTML = `${cancelled} <small>(${cancelledPercent}%)</small>`;
         if (revenueEl) revenueEl.textContent = `₱${totalRevenue.toLocaleString()}`;
@@ -685,7 +721,7 @@ updateSeatMiniGrid() {
             return `
                 <tr>
                     <td>${booking.id}</td>
-                    <td>Reservation</td>
+                    <td>Booking</td>
                     <td>${booking.fullName}</td>
                     <td>Seat ${booking.seatNumber}</td>
                     <td>${bookingDate.toLocaleDateString()}</td>

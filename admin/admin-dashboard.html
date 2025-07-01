@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Seat Reservation System</title>
+    <title>Admin Dashboard - Seat Reservation</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="admin-styles.css" rel="stylesheet">
@@ -28,7 +28,7 @@
                 </a>
                 <a href="#" class="nav-link" data-page="reservation">
                     <i class="fas fa-calendar-check"></i>
-                    <span>Reservation</span>
+                    <span>Seats</span>
                 </a>
                 <a href="#" class="nav-link logout-link" id="logoutBtn">
                     <i class="fas fa-sign-out-alt"></i>
@@ -81,8 +81,8 @@
                                 <i class="fas fa-calendar-check"></i>
                             </div>
                             <div class="stat-info">
-                                <h3 id="reservedSeats">-</h3>
-                                <p>Reserved</p>
+                                <h3 id="bookedSeats">-</h3>
+                                <p>Booked</p>
                             </div>
                         </div>
                     </div>
@@ -101,27 +101,27 @@
 
                 <!-- Dashboard Content Row -->
                 <div class="row">
-                    <!-- Upcoming Reservations -->
+                    <!-- Upcoming Bookings -->
                     <div class="col-lg-4 mb-4">
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">
                                     <i class="fas fa-clock me-2"></i>
-                                    Upcoming Reservations
+                                    Upcoming Bookings
                                 </h5>
-                                <select class="form-select form-select-sm" style="width: auto;" id="reservationFilter">
+                                <select class="form-select form-select-sm" style="width: auto;" id="bookingFilter">
                                     <option value="today">Today</option>
                                     <option value="week">This Week</option>
                                     <option value="month">This Month</option>
                                 </select>
                             </div>
                             <div class="card-body">
-                                <div id="upcomingReservations">
+                                <div id="upcomingBookings">
                                     <div class="text-center">
                                         <div class="spinner-border spinner-border-sm text-primary" role="status">
                                             <span class="visually-hidden">Loading...</span>
                                         </div>
-                                        <p class="mt-2 text-muted">Loading reservations...</p>
+                                        <p class="mt-2 text-muted">Loading bookings...</p>
                                     </div>
                                 </div>
                             </div>
@@ -156,22 +156,35 @@
                     <!-- Seat Availability Map -->
                     <div class="col-lg-4 mb-4">
                         <div class="card">
-                            <div class="card-header">
+                            <div class="card-header d-flex justify-content-between align-items-center">
                                 <h5 class="mb-0">
                                     <i class="fas fa-map me-2"></i>
                                     Seat Availability Map
                                 </h5>
+                                <button class="btn btn-sm btn-outline-primary" id="viewFullSeatsBtn" data-page="reservation" title="View Full Seat Layout">
+                                    <i class="fas fa-expand-alt me-1"></i>
+                                    View Full
+                                </button>
                             </div>
                             <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label small">Select Event</label>
+                                    <select class="form-select form-select-sm" id="seatMapEventSelect">
+                                        <option value="">Choose an event...</option>
+                                        <!-- Events will be populated by JavaScript -->
+                                    </select>
+                                </div>
                                 <div class="seat-map-legend mb-3">
-                                    <div class="d-flex justify-content-between text-sm">
+                                    <div class="d-flex justify-content-center gap-4 text-sm">
                                         <span><i class="fas fa-square text-success"></i> Available</span>
-                                        <span><i class="fas fa-square text-primary"></i> Reserved</span>
-                                        <span><i class="fas fa-square text-danger"></i> Booked</span>
+                                        <span><i class="fas fa-square text-primary"></i> Booked</span>
                                     </div>
                                 </div>
                                 <div class="seat-mini-grid" id="seatMiniGrid">
-                                    <!-- Mini seat grid will be generated here -->
+                                    <div class="text-center py-3">
+                                        <i class="fas fa-arrow-up text-muted"></i>
+                                        <p class="text-muted mt-2 mb-0 small">Select an event to view seats</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -230,13 +243,13 @@
                 <div class="row mb-4">
                     <div class="col-lg-4 col-md-6 mb-3">
                         <div class="kpi-card">
-                            <h4 id="totalReservations">-</h4>
-                            <p>Total Reservations</p>
+                            <h4 id="totalBookings">-</h4>
+                            <p>Total Bookings</p>
                         </div>
                     </div>
                     <div class="col-lg-4 col-md-6 mb-3">
                         <div class="kpi-card">
-                            <h4 id="cancelledReservations">- <small>(--%)</small></h4>
+                            <h4 id="cancelledBookings">- <small>(--%)</small></h4>
                             <p>Cancelled</p>
                         </div>
                     </div>
@@ -256,10 +269,6 @@
                             <button class="btn btn-success btn-sm" id="exportCSV">
                                 <i class="fas fa-file-csv me-1"></i>
                                 CSV
-                            </button>
-                            <button class="btn btn-danger btn-sm" id="exportPDF">
-                                <i class="fas fa-file-pdf me-1"></i>
-                                PDF
                             </button>
                         </div>
                     </div>
@@ -297,13 +306,13 @@
             <!-- Reservation Page -->
             <div class="page-content d-none" id="reservation-page">
                 <div class="page-header">
-                    <h1 class="page-title">Reservation Management</h1>
-                    <p class="page-subtitle">Manage seat reservations and overrides</p>
-                </div>
+                <h1 class="page-title">Seat Overview</h1>
+                <p class="page-subtitle">View seat reservations and availability</p>
+            </div>
 
                 <!-- Event Selection for Reservation -->
                 <div class="row mb-4">
-                    <div class="col-md-6">
+                    <div class="col-md-12">
                         <div class="card">
                             <div class="card-body">
                                 <label class="form-label">Select Event</label>
@@ -311,25 +320,6 @@
                                     <option value="">Choose an event...</option>
                                     <!-- Events will be loaded from Firebase -->
                                 </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span>Admin Actions:</span>
-                                    <div>
-                                        <button class="btn btn-warning btn-sm" id="blockSeatMode">
-                                            <i class="fas fa-ban me-1"></i>
-                                            Booked Seats
-                                        </button>
-                                        <button class="btn btn-info btn-sm" id="unblockSeatMode">
-                                            <i class="fas fa-unlock me-1"></i>
-                                            Unbooked Seats
-                                        </button>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
