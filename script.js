@@ -1,5 +1,5 @@
-// Customer Script (No blocked seat logic, correctly stores booking date/time)
-import FirebaseService from '../firebase-config.js';
+
+import FirebaseService from './firebase-config.js';
 
 class SeatReservationSystem {
     constructor() {

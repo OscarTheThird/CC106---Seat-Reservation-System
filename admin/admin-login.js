@@ -1,4 +1,3 @@
-// Enhanced Admin Login Script with Better Error Handling
 import FirebaseService from '../firebase-config.js';
 
 class AdminLogin {
