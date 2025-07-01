@@ -465,7 +465,7 @@ body {
     align-items: center;
     gap: 10px;
     min-height: 130px;
-    min-width: 300px;
+    min-width: 280px;
 }
 
 .activity-item:hover {
