@@ -10,7 +10,10 @@ class AdminLogin {
 
     init() {
         this.bindEvents();
-        this.checkAuthStatus();
+        
+        // Don't auto-check auth status on login page - let user stay here
+        // this.checkAuthStatus(); // Commented out to prevent auto-redirect
+        
         this.setupAuthListener();
         this.prefillDemoCredentials(); // Auto-fill demo credentials for convenience
         this.setupSecurityChecks();
@@ -20,10 +23,8 @@ class AdminLogin {
         // Clear any stored auth tokens/sessions when on login page
         this.clearPreviousSession();
         
-        // Set up periodic auth checking
-        this.authCheckInterval = setInterval(() => {
-            this.checkAuthStatus();
-        }, 2000); // Check every 2 seconds
+        // Disable periodic auth checking on login page to prevent auto-redirect
+        // Users should manually log in
         
         // Handle browser back/forward navigation
         window.addEventListener('popstate', () => {
@@ -33,9 +34,64 @@ class AdminLogin {
         // Handle page visibility changes (tab switching)
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                this.checkAuthStatus();
+                // Don't auto-check auth when returning to login page
+                console.log('👁️ User returned to login page');
             }
         });
+    }
+
+    checkAuthStatusGently() {
+        // More intelligent auth checking that respects user logout
+        const isAuthenticated = this.firebaseService.isAuthenticated();
+        const hasValidSession = this.hasValidAuthSession();
+        const wasRecentlyLoggedOut = this.wasRecentlyLoggedOut();
+        
+        // Don't auto-redirect if user was recently logged out
+        if (wasRecentlyLoggedOut) {
+            console.log('🚫 User recently logged out, not auto-redirecting');
+            return;
+        }
+        
+        // Only redirect if both auth checks pass AND user hasn't recently logged out
+        if (isAuthenticated && hasValidSession) {
+            console.log('👤 User already authenticated with valid session, redirecting...');
+            this.redirectToDashboard();
+        } else if (isAuthenticated && !hasValidSession) {
+            console.log('⚠️ User authenticated but session invalid, clearing...');
+            this.firebaseService.signOut();
+            this.clearAuthSession();
+        } else {
+            console.log('❌ No valid authentication found');
+            this.clearAuthSession();
+        }
+    }
+
+    wasRecentlyLoggedOut() {
+        try {
+            const logoutTimestamp = localStorage.getItem('adminLogoutTimestamp');
+            if (!logoutTimestamp) {
+                return false;
+            }
+            
+            const timestamp = parseInt(logoutTimestamp);
+            const now = Date.now();
+            const timeSinceLogout = now - timestamp;
+            
+            // Consider "recent logout" as within 30 seconds
+            const recentLogoutWindow = 30 * 1000; // 30 seconds
+            
+            if (timeSinceLogout < recentLogoutWindow) {
+                console.log(`🕐 Recent logout detected (${Math.round(timeSinceLogout / 1000)}s ago)`);
+                return true;
+            }
+            
+            // Clean up old logout timestamp
+            localStorage.removeItem('adminLogoutTimestamp');
+            return false;
+        } catch (error) {
+            console.log('❌ Error checking recent logout:', error);
+            return false;
+        }
     }
 
     clearPreviousSession() {
@@ -45,13 +101,16 @@ class AdminLogin {
             sessionStorage.removeItem('adminAuthToken');
             localStorage.removeItem('adminLoginTimestamp');
             sessionStorage.removeItem('adminLoginTimestamp');
+            localStorage.removeItem('adminLogoutTimestamp'); // Clear logout timestamp too
             
-            // Clear any Firebase auth persistence
+            // Clear any Firebase auth persistence when on login page
             if (this.firebaseService && this.firebaseService.auth) {
                 this.firebaseService.signOut().catch(() => {
                     // Ignore errors during cleanup
                 });
             }
+            
+            console.log('🧹 All auth data cleared from login page');
         } catch (error) {
             console.log('Session cleanup completed');
         }
@@ -77,14 +136,18 @@ class AdminLogin {
     }
 
     setupAuthListener() {
-        // Enhanced auth state change monitoring
+        // Only redirect on successful login, not on existing auth state
         this.firebaseService.onAuthStateChanged = (user) => {
-            if (user && window.location.pathname.includes('admin-login.html')) {
-                console.log('✅ User authenticated, redirecting to dashboard...');
+            // Only redirect if this is a fresh login (not existing auth state)
+            if (user && this.isProcessing) {
+                console.log('✅ Fresh login detected, redirecting to dashboard...');
                 this.setAuthSession(user);
                 this.redirectToDashboard();
-            } else if (!user && window.location.pathname.includes('admin-login.html')) {
-                console.log('❌ No authenticated user on login page');
+            } else if (user && !this.isProcessing) {
+                console.log('👤 Existing auth state detected, but staying on login page');
+                // Don't redirect - let user manually decide
+            } else if (!user) {
+                console.log('❌ No authenticated user');
                 this.clearAuthSession();
             }
         };
@@ -93,16 +156,15 @@ class AdminLogin {
     setAuthSession(user) {
         // Set secure session markers
         const authData = {
-            uid: user.uid,
-            email: user.email,
             timestamp: Date.now(),
-            sessionId: this.generateSessionId()
+            sessionId: this.generateSessionId(),
+            userLoggedIn: true
         };
         
         try {
             localStorage.setItem('adminAuthToken', JSON.stringify(authData));
-            sessionStorage.setItem('adminAuthToken', JSON.stringify(authData));
             localStorage.setItem('adminLoginTimestamp', Date.now().toString());
+            console.log('✅ Auth session set successfully');
         } catch (error) {
             console.warn('Could not set auth session:', error);
         }
@@ -164,11 +226,13 @@ class AdminLogin {
     }
 
     checkAuthStatus() {
-        // Enhanced authentication checking
+        // Initial auth check when page loads
         const isAuthenticated = this.firebaseService.isAuthenticated();
         const hasValidSession = this.hasValidAuthSession();
+        const wasRecentlyLoggedOut = this.wasRecentlyLoggedOut();
         
-        if (isAuthenticated && hasValidSession) {
+        // Only redirect on initial load if user has valid auth AND hasn't recently logged out
+        if (isAuthenticated && hasValidSession && !wasRecentlyLoggedOut) {
             console.log('👤 User already authenticated with valid session');
             this.redirectToDashboard();
         } else if (isAuthenticated && !hasValidSession) {
@@ -176,14 +240,14 @@ class AdminLogin {
             this.firebaseService.signOut();
             this.clearAuthSession();
         } else {
-            console.log('❌ No valid authentication found');
+            console.log('❌ No valid authentication found or user recently logged out');
             this.clearAuthSession();
         }
     }
 
     hasValidAuthSession() {
         try {
-            const authToken = localStorage.getItem('adminAuthToken') || sessionStorage.getItem('adminAuthToken');
+            const authToken = localStorage.getItem('adminAuthToken');
             const loginTimestamp = localStorage.getItem('adminLoginTimestamp');
             
             if (!authToken || !loginTimestamp) {
@@ -202,8 +266,8 @@ class AdminLogin {
                 return false;
             }
             
-            // Verify auth data integrity
-            if (!authData.uid || !authData.email || !authData.timestamp) {
+            // Verify auth data integrity - simplified check
+            if (!authData.timestamp || !authData.sessionId) {
                 console.log('🔍 Invalid auth data structure');
                 return false;
             }
@@ -325,7 +389,7 @@ class AdminLogin {
             clearInterval(this.authCheckInterval);
         }
 
-        // Redirect after short delay
+        // Mark as fresh login and redirect after short delay
         setTimeout(() => {
             this.redirectToDashboard();
         }, 1500);

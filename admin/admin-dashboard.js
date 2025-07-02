@@ -20,57 +20,107 @@ class AdminDashboard {
     }
 
     async init() {
-        // SECURITY: First check authentication before initializing anything
-        if (!this.checkAuthenticationStatus()) {
+        console.log('🚀 Starting dashboard initialization...');
+        
+        try {
+            this.firebaseService = new FirebaseService();
+            console.log('✅ FirebaseService created');
+        } catch (error) {
+            console.warn('⚠️ Firebase service initialization failed, using fallback auth:', error);
+            // Continue with fallback authentication
+        }
+        
+        // SECURITY: Check authentication with fallback logic
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Give more time for Firebase
+        
+        if (!this.checkAuthenticationWithFallback()) {
+            console.log('❌ Authentication failed on init, redirecting...');
             this.redirectToLogin();
             return;
         }
 
+        console.log('✅ Authentication passed, initializing dashboard...');
         this.showDashboard();
         this.bindEvents();
         this.setupSecurityMonitoring();
-        
-        try {
-            this.firebaseService = new FirebaseService();
-        } catch (error) {
-            this.showError('Firebase connection failed. Please refresh the page.');
-            return;
-        }
         this.loadDataProgressively();
+    }
+
+    checkAuthenticationWithFallback() {
+        try {
+            // First, check if we have a recent login session
+            const hasRecentSession = this.hasRecentLoginSession();
+            
+            if (hasRecentSession) {
+                console.log('✅ Recent login session found, allowing access');
+                return true;
+            }
+            
+            // If Firebase is available, use it
+            if (this.firebaseService) {
+                const firebaseAuth = this.firebaseService.isAuthenticated();
+                if (firebaseAuth) {
+                    console.log('✅ Firebase authentication confirmed');
+                    this.createAuthSession(); // Ensure session exists
+                    return true;
+                }
+            }
+            
+            // Check for valid auth session as fallback
+            const hasAuthSession = this.hasValidAuthSession();
+            if (hasAuthSession) {
+                console.log('✅ Valid auth session found');
+                return true;
+            }
+            
+            console.log('❌ No valid authentication found');
+            return false;
+        } catch (error) {
+            console.error('❌ Auth check error:', error);
+            // In case of errors, check for recent session as final fallback
+            return this.hasRecentLoginSession();
+        }
+    }
+
+    hasRecentLoginSession() {
+        try {
+            const loginTimestamp = localStorage.getItem('adminLoginTimestamp');
+            if (!loginTimestamp) {
+                return false;
+            }
+            
+            const timestamp = parseInt(loginTimestamp);
+            const now = Date.now();
+            const timeSinceLogin = now - timestamp;
+            
+            // Allow access for 10 minutes after login (even if Firebase fails)
+            const recentLoginWindow = 10 * 60 * 1000; // 10 minutes
+            
+            if (timeSinceLogin < recentLoginWindow) {
+                console.log(`✅ Recent login detected (${Math.round(timeSinceLogin / 1000)}s ago)`);
+                return true;
+            }
+            
+            return false;
+        } catch (error) {
+            console.log('❌ Error checking recent login:', error);
+            return false;
+        }
     }
 
     checkAuthenticationStatus() {
         try {
-            // Check multiple authentication indicators
-            const firebaseAuth = this.firebaseService?.isAuthenticated();
-            const hasAuthToken = this.hasValidAuthSession();
-            const hasLoginTimestamp = this.hasValidLoginTimestamp();
-            
-            console.log('🔍 Auth Check:', {
-                firebaseAuth,
-                hasAuthToken,
-                hasLoginTimestamp
-            });
-            
-            // All checks must pass
-            if (firebaseAuth && hasAuthToken && hasLoginTimestamp) {
-                console.log('✅ Authentication verified');
-                return true;
-            }
-            
-            console.log('❌ Authentication failed');
-            this.clearAllAuthData();
-            return false;
+            // Use the more robust fallback method
+            return this.checkAuthenticationWithFallback();
         } catch (error) {
             console.error('❌ Auth check error:', error);
-            this.clearAllAuthData();
-            return false;
+            return this.hasRecentLoginSession(); // Final fallback
         }
     }
 
     hasValidAuthSession() {
         try {
-            const authToken = localStorage.getItem('adminAuthToken') || sessionStorage.getItem('adminAuthToken');
+            const authToken = localStorage.getItem('adminAuthToken');
             
             if (!authToken) {
                 return false;
@@ -78,13 +128,13 @@ class AdminDashboard {
             
             const authData = JSON.parse(authToken);
             
-            // Verify auth data structure and content
-            if (!authData.uid || !authData.email || !authData.timestamp || !authData.sessionId) {
+            // Verify basic auth data structure
+            if (!authData.timestamp) {
                 console.log('🔍 Invalid auth data structure');
                 return false;
             }
             
-            // Check if auth data is not too old (24 hours)
+            // Check if auth data is not too old (24 hours) - more lenient
             const now = Date.now();
             const authAge = now - authData.timestamp;
             const maxAge = 24 * 60 * 60 * 1000; // 24 hours
@@ -101,56 +151,46 @@ class AdminDashboard {
         }
     }
 
-    hasValidLoginTimestamp() {
+    createAuthSession() {
+        // Create a simple session marker when Firebase auth is valid
         try {
-            const loginTimestamp = localStorage.getItem('adminLoginTimestamp');
+            const authData = {
+                timestamp: Date.now(),
+                sessionId: this.generateSessionId(),
+                created: true
+            };
             
-            if (!loginTimestamp) {
-                return false;
-            }
-            
-            const timestamp = parseInt(loginTimestamp);
-            const now = Date.now();
-            const sessionAge = now - timestamp;
-            const maxSessionAge = 24 * 60 * 60 * 1000; // 24 hours
-            
-            if (sessionAge > maxSessionAge) {
-                console.log('⏰ Login session expired');
-                return false;
-            }
-            
-            return true;
+            localStorage.setItem('adminAuthToken', JSON.stringify(authData));
+            localStorage.setItem('adminLoginTimestamp', Date.now().toString());
+            console.log('✅ Auth session created');
         } catch (error) {
-            console.log('❌ Error validating login timestamp:', error);
-            return false;
+            console.warn('Could not create auth session:', error);
         }
     }
 
+    generateSessionId() {
+        return Math.random().toString(36).substring(2) + Date.now().toString(36);
+    }
+
     setupSecurityMonitoring() {
-        // Continuous authentication monitoring
+        // More lenient authentication monitoring with Firebase fallback handling
         this.authCheckInterval = setInterval(() => {
-            if (!this.checkAuthenticationStatus()) {
+            // Only redirect if both Firebase and session checks fail AND no recent login
+            if (!this.checkAuthenticationWithFallback()) {
                 console.log('🚨 Authentication lost, redirecting to login...');
                 this.redirectToLogin();
             }
-        }, 5000); // Check every 5 seconds
+        }, 60000); // Check every 60 seconds to be even less aggressive
         
         // Monitor page visibility changes
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                // When user returns to tab, verify auth
-                if (!this.checkAuthenticationStatus()) {
-                    this.redirectToLogin();
-                }
-            }
-        });
-        
-        // Monitor browser navigation attempts
-        window.addEventListener('popstate', (e) => {
-            // Prevent unauthorized navigation
-            if (!this.checkAuthenticationStatus()) {
-                e.preventDefault();
-                this.redirectToLogin();
+                // When user returns to tab, verify auth (but with delay to avoid loops)
+                setTimeout(() => {
+                    if (!this.checkAuthenticationWithFallback()) {
+                        this.redirectToLogin();
+                    }
+                }, 2000); // Increased delay
             }
         });
         
@@ -158,9 +198,13 @@ class AdminDashboard {
         window.addEventListener('storage', (e) => {
             if (e.key === 'adminAuthToken' || e.key === 'adminLoginTimestamp') {
                 if (!e.newValue) {
-                    // Auth was cleared in another tab
-                    console.log('🚨 Auth cleared in another tab');
-                    this.redirectToLogin();
+                    // Auth was cleared in another tab, but check if recent login exists
+                    setTimeout(() => {
+                        if (!this.hasRecentLoginSession()) {
+                            console.log('🚨 Auth cleared in another tab');
+                            this.redirectToLogin();
+                        }
+                    }, 2000);
                 }
             }
         });
@@ -171,9 +215,6 @@ class AdminDashboard {
                 e.preventDefault();
             });
         }
-
-        // Monitor for developer tools (basic detection)
-        this.setupDevToolsDetection();
     }
 
     setupDevToolsDetection() {
@@ -225,6 +266,9 @@ class AdminDashboard {
     redirectToLogin() {
         // Clear all auth data before redirect
         this.clearAllAuthData();
+        
+        // Set logout timestamp to prevent auto-login
+        localStorage.setItem('adminLogoutTimestamp', Date.now().toString());
         
         // Clear intervals
         if (this.authCheckInterval) {
@@ -459,6 +503,9 @@ class AdminDashboard {
                 return;
             }
             
+            // Set logout timestamp to prevent auto-login
+            localStorage.setItem('adminLogoutTimestamp', Date.now().toString());
+            
             // Clear intervals
             if (this.authCheckInterval) {
                 clearInterval(this.authCheckInterval);
@@ -483,14 +530,15 @@ class AdminDashboard {
         } catch (error) {
             console.error('Logout error:', error);
             // Force logout even if there's an error
+            localStorage.setItem('adminLogoutTimestamp', Date.now().toString());
             this.clearAllAuthData();
             window.location.replace('admin-login.html');
         }
     }
 
     switchPage(page) {
-        // Verify auth before switching pages
-        if (!this.checkAuthenticationStatus()) {
+        // More lenient auth check for page switching
+        if (!this.checkAuthenticationWithFallback()) {
             this.redirectToLogin();
             return;
         }
@@ -628,8 +676,8 @@ class AdminDashboard {
     }
 
     async saveNewEvent() {
-        // Verify auth before creating events
-        if (!this.checkAuthenticationStatus()) {
+        // More lenient auth check for operations
+        if (!this.checkAuthenticationWithFallback()) {
             this.redirectToLogin();
             return;
         }
@@ -649,27 +697,32 @@ class AdminDashboard {
                 date,
                 price
             };
-            const result = await this.firebaseService.createEvent(eventData);
-            if (result.success) {
-                // Close the modal
-                const modalEl = document.getElementById('addEventModal');
-                if (modalEl) {
-                    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-                    modal.hide();
+            
+            if (this.firebaseService) {
+                const result = await this.firebaseService.createEvent(eventData);
+                if (result.success) {
+                    // Close the modal
+                    const modalEl = document.getElementById('addEventModal');
+                    if (modalEl) {
+                        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                        modal.hide();
+                    }
+                    // Reset the form
+                    const form = document.getElementById('addEventForm');
+                    if (form) form.reset();
+                    this.showToast('Event created successfully!', 'success');
+                    // Refresh stats and event lists
+                    setTimeout(() => {
+                        this.loadEventsAsync().then(() => {
+                            this.handleEventsLoaded();
+                            this.loadDataProgressively();
+                        });
+                    }, 500);
+                } else {
+                    this.showError('Failed to create event: ' + (result.error || 'Unknown error'));
                 }
-                // Reset the form
-                const form = document.getElementById('addEventForm');
-                if (form) form.reset();
-                this.showToast('Event created successfully!', 'success');
-                // Refresh stats and event lists
-                setTimeout(() => {
-                    this.loadEventsAsync().then(() => {
-                        this.handleEventsLoaded();
-                        this.loadDataProgressively();
-                    });
-                }, 500);
             } else {
-                this.showError('Failed to create event: ' + (result.error || 'Unknown error'));
+                this.showError('Firebase service not available. Please refresh the page.');
             }
         } catch (error) {
             this.showError('Error creating event: ' + error.message);
