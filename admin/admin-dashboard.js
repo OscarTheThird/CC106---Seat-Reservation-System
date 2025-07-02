@@ -6,7 +6,7 @@ class AdminDashboard {
         this.events = {};
         this.bookings = [];
         this.allBookings = [];
-        this.filteredBookings = []; // Add filtered bookings array
+        this.filteredBookings = [];
         this.firebaseService = null;
         this.currentEventId = null;
         this.currentEventData = null;
@@ -19,14 +19,24 @@ class AdminDashboard {
     }
 
     async init() {
-        this.showDashboard();
-        this.bindEvents();
+        // Simple auth check - if not logged in, redirect immediately
         try {
             this.firebaseService = new FirebaseService();
+            const isAuthenticated = await this.firebaseService.isAuthenticated();
+            
+            if (!isAuthenticated) {
+                window.location.href = 'admin-login.html';
+                return;
+            }
         } catch (error) {
-            this.showError('Firebase connection failed. Please refresh the page.');
+            // If auth check fails, redirect to login
+            window.location.href = 'admin-login.html';
             return;
         }
+
+        // Only continue if authenticated
+        this.showDashboard();
+        this.bindEvents();
         this.loadDataProgressively();
     }
 
@@ -96,7 +106,7 @@ class AdminDashboard {
             if (result && result.success) {
                 this.allBookings = result.bookings;
                 this.bookings = result.bookings;
-                this.filteredBookings = result.bookings; // Initialize filtered bookings
+                this.filteredBookings = result.bookings;
                 this.dataLoaded.bookings = true;
                 return true;
             }
@@ -152,13 +162,11 @@ class AdminDashboard {
             this.handleAdminEventChange(e.target.value);
         });
 
-        // Add seat map event selector
         const seatMapEventSelect = document.getElementById('seatMapEventSelect');
         if (seatMapEventSelect) seatMapEventSelect.addEventListener('change', (e) => {
             this.handleSeatMapEventChange(e.target.value);
         });
 
-        // Add View Full Seats button event listener
         const viewFullSeatsBtn = document.getElementById('viewFullSeatsBtn');
         if (viewFullSeatsBtn) viewFullSeatsBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -181,6 +189,14 @@ class AdminDashboard {
 
     setupRealtimeListeners() {
         if (!this.firebaseService || this.listenersSetup) return;
+        
+        // Monitor auth state - redirect if logged out
+        this.firebaseService.onAuthStateChanged((user) => {
+            if (!user) {
+                window.location.href = 'admin-login.html';
+            }
+        });
+
         this.firebaseService.onEventsChange((events) => {
             this.events = events;
             this.updateEventSelects();
@@ -255,40 +271,33 @@ class AdminDashboard {
     updateStatCards() {
         if (!this.dataLoaded.events || !this.dataLoaded.bookings) return;
         
-        // Get total confirmed bookings across ALL events
         const totalConfirmedBookings = this.allBookings.filter(
             booking => booking.status === 'confirmed'
         ).length;
         
-        // Calculate totals
         const totalEvents = Object.keys(this.events).length;
-        const totalSeats = totalEvents * 100; // 100 seats per event
+        const totalSeats = totalEvents * 100;
         const totalAvailable = Math.max(0, totalSeats - totalConfirmedBookings);
         const totalBooked = totalConfirmedBookings;
         
-        // Calculate total revenue from confirmed bookings
         const totalRevenue = this.allBookings
             .filter(booking => booking.status === 'confirmed')
             .reduce((sum, booking) => sum + (booking.price || 0), 0);
         
-        // Update the display
         this.animateStatUpdate('availableSeats', totalAvailable);
         this.animateStatUpdate('bookedSeats', totalBooked);
         this.animateStatUpdate('todayRevenue', `₱${totalRevenue.toLocaleString()}`);
         this.updateSeatMiniGrid();
     }
 
-    // Main function that updates the seat mini grid display - UPDATED: Removed seat grid label
     updateSeatMiniGrid(selectedEventId = null) {
         const miniGrid = document.getElementById('seatMiniGrid');
         if (!miniGrid) return;
         
-        // Clear the container first
         miniGrid.innerHTML = '';
         
         const totalEvents = Object.keys(this.events).length;
         
-        // Check if there are any events
         if (totalEvents === 0) {
             miniGrid.innerHTML = `
                 <div class="text-center py-3" style="grid-column: 1 / -1;">
@@ -299,42 +308,31 @@ class AdminDashboard {
             return;
         }
         
-        // Determine which event to show
         let eventToShow;
         if (selectedEventId && this.events[selectedEventId]) {
-            // Use the selected event from dropdown
             eventToShow = this.events[selectedEventId];
         } else if (!selectedEventId) {
-            // If no event selected, show placeholder
             this.showEmptySeatMap();
             return;
         } else {
-            // Invalid event ID
             return;
         }
         
         if (eventToShow) {
-            // Get all confirmed bookings for this event
             const eventBookings = this.allBookings.filter(
                 booking => booking.eventId === eventToShow.id && booking.status === 'confirmed'
             );
             
-            // Extract seat numbers that are booked
             const bookedSeats = eventBookings.map(b => b.seatNumber);
             
-            // Create 50 mini seats (5 rows x 10 columns)
             for (let i = 1; i <= 50; i++) {
                 const miniSeat = document.createElement('div');
-                
-                // Determine if seat is booked or available
                 const isBooked = bookedSeats.includes(i);
                 
-                // Set CSS classes and content
                 miniSeat.className = `mini-seat ${isBooked ? 'booked' : 'available'}`;
                 miniSeat.textContent = i;
                 miniSeat.title = `Seat ${i} - ${isBooked ? 'Booked' : 'Available'}`;
                 
-                // Add to grid
                 miniGrid.appendChild(miniSeat);
             }
         }
@@ -384,24 +382,17 @@ class AdminDashboard {
         }
 
         try {
-            const eventData = {
-                name,
-                date,
-                price
-            };
+            const eventData = { name, date, price };
             const result = await this.firebaseService.createEvent(eventData);
             if (result.success) {
-                // Close the modal
                 const modalEl = document.getElementById('addEventModal');
                 if (modalEl) {
                     const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
                     modal.hide();
                 }
-                // Reset the form
                 const form = document.getElementById('addEventForm');
                 if (form) form.reset();
                 this.showToast('Event created successfully!', 'success');
-                // Refresh stats and event lists
                 setTimeout(() => {
                     this.loadEventsAsync().then(() => {
                         this.handleEventsLoaded();
@@ -416,9 +407,7 @@ class AdminDashboard {
         }
     }
 
-    // Helper method to safely get booking date
     getBookingDate(booking) {
-        // Try different possible date fields
         const possibleDates = [
             booking.createdAt,
             booking.timestamp,
@@ -429,11 +418,9 @@ class AdminDashboard {
         
         for (const dateValue of possibleDates) {
             if (dateValue) {
-                // Handle Firebase Timestamp objects
                 if (dateValue.seconds) {
                     return new Date(dateValue.seconds * 1000);
                 }
-                // Handle regular date strings/objects
                 const date = new Date(dateValue);
                 if (!isNaN(date.getTime())) {
                     return date;
@@ -441,11 +428,9 @@ class AdminDashboard {
             }
         }
         
-        // If no valid date found, return current date as fallback
         return new Date();
     }
 
-    // Update the loadRecentBookings method to use enhanced styling
     loadRecentBookings() {
         const container = document.getElementById('upcomingBookings');
         if (!container) return;
@@ -477,7 +462,7 @@ class AdminDashboard {
                 const dateB = new Date(eventB.date);
                 return dateA - dateB;
             })
-            .slice(0, 8); // Show more items since we have better layout
+            .slice(0, 8);
         
         if (upcomingBookings.length === 0) {
             container.innerHTML = `
@@ -521,7 +506,6 @@ class AdminDashboard {
         }).join('');
     }
 
-    // Update the loadRecentActivity method for bigger, better content
     loadRecentActivity() {
         const container = document.getElementById('recentActivity');
         if (!container) return;
@@ -542,7 +526,7 @@ class AdminDashboard {
                 const dateB = this.getBookingDate(b);
                 return dateB - dateA;
             })
-            .slice(0, 10) // Show more items for scrolling
+            .slice(0, 10)
             .map(booking => {
                 const bookingDate = this.getBookingDate(booking);
                 const timeAgo = this.getTimeAgo(bookingDate);
@@ -597,7 +581,6 @@ class AdminDashboard {
         `).join('');
     }
 
-    // Handle seat map event selection
     handleSeatMapEventChange(eventId) {
         if (!eventId) {
             this.showEmptySeatMap();
@@ -669,14 +652,13 @@ class AdminDashboard {
             }
             return;
         }
-        this.filteredBookings = [...this.allBookings]; // Reset filters when loading
+        this.filteredBookings = [...this.allBookings];
         this.updateKPIs();
         this.loadRecordsTable();
         this.updateEventFilter();
     }
 
     updateKPIs() {
-        // Use filtered bookings for KPIs when filters are applied
         const bookingsToAnalyze = this.filteredBookings;
         const totalBookings = bookingsToAnalyze.length;
         const confirmed = bookingsToAnalyze.filter(b => b.status === 'confirmed').length;
@@ -743,22 +725,18 @@ class AdminDashboard {
         }).join('');
     }
 
-    // ENHANCED: Apply Record Filters - Now includes ID and email search
     applyRecordFilters() {
         const recordTypeFilter = document.getElementById('recordTypeFilter')?.value || 'all';
         const dateFrom = document.getElementById('dateFrom')?.value;
         const dateTo = document.getElementById('dateTo')?.value;
         const searchRecords = document.getElementById('searchRecords')?.value.toLowerCase() || '';
 
-        // Start with all bookings
         let filtered = [...this.allBookings];
 
-        // Filter by record type (status)
         if (recordTypeFilter !== 'all') {
             filtered = filtered.filter(booking => booking.status === recordTypeFilter);
         }
 
-        // Filter by date range
         if (dateFrom) {
             const fromDate = new Date(dateFrom);
             fromDate.setHours(0, 0, 0, 0);
@@ -778,7 +756,6 @@ class AdminDashboard {
             });
         }
 
-        // ENHANCED: Filter by search term (ID, customer name, email, seat, or event name)
         if (searchRecords) {
             filtered = filtered.filter(booking => {
                 const bookingId = (booking.id || '').toLowerCase();
@@ -795,7 +772,6 @@ class AdminDashboard {
             });
         }
 
-        // Update filtered bookings and refresh display
         this.filteredBookings = filtered;
         this.updateKPIs();
         this.loadRecordsTable();
@@ -803,7 +779,6 @@ class AdminDashboard {
         this.showToast(`Found ${filtered.length} records`, 'info');
     }
 
-    // FIXED: Reset Record Filters
     resetRecordFilters() {
         const recordTypeFilter = document.getElementById('recordTypeFilter');
         const dateFrom = document.getElementById('dateFrom');
@@ -815,7 +790,6 @@ class AdminDashboard {
         if (dateTo) dateTo.value = '';
         if (searchRecords) searchRecords.value = '';
         
-        // Reset to show all bookings
         this.filteredBookings = [...this.allBookings];
         this.updateKPIs();
         this.loadRecordsTable();
@@ -888,7 +862,6 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
                 const booking = this.allBookings.find(b => b.id === bookingId);
                 if (booking) booking.status = 'cancelled';
                 
-                // Update filtered bookings as well
                 const filteredBooking = this.filteredBookings.find(b => b.id === bookingId);
                 if (filteredBooking) filteredBooking.status = 'cancelled';
                 
@@ -905,41 +878,34 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
     }
 
     getTimeAgo(date) {
-        // Ensure we have a valid date
         if (!date || isNaN(date.getTime())) {
             return 'Unknown';
         }
         
         const now = new Date();
         
-        // Handle Firebase Timestamp objects
         if (date.seconds) {
             date = new Date(date.seconds * 1000);
         }
         
-        // Calculate difference in days using date objects (not just milliseconds)
         const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const bookingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const diffDays = Math.floor((nowDate - bookingDate) / (1000 * 60 * 60 * 24));
         
-        // For more precise timing within the same day
         const diffMs = now - date;
         const diffMins = Math.floor(diffMs / 60000);
         const diffHours = Math.floor(diffMs / 3600000);
         
-        // Handle future dates
         if (diffMs < 0) {
             return 'Future';
         }
         
-        // Same day calculations
         if (diffDays === 0) {
             if (diffMins < 1) return 'Just now';
             else if (diffMins < 60) return `${diffMins}m ago`;
             else return `${diffHours}h ago`;
         }
         
-        // Different day calculations
         if (diffDays === 1) return '1 day ago';
         else if (diffDays < 7) return `${diffDays} days ago`;
         else if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
@@ -947,7 +913,6 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
         else return `${Math.floor(diffDays / 365)} years ago`;
     }
 
-    // Helper function to format event dates consistently
     formatEventDate(dateString) {
         if (!dateString) return 'Unknown Date';
         
