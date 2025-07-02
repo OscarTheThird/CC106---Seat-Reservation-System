@@ -6,11 +6,13 @@ class AdminDashboard {
         this.events = {};
         this.bookings = [];
         this.allBookings = [];
-        this.filteredBookings = []; // Add filtered bookings array
+        this.filteredBookings = [];
         this.firebaseService = null;
         this.currentEventId = null;
         this.currentEventData = null;
         this.listenersSetup = false;
+        this.isAuthenticated = false;
+        this.authCheckComplete = false;
         this.dataLoaded = {
             events: false,
             bookings: false
@@ -19,17 +21,283 @@ class AdminDashboard {
     }
 
     async init() {
+        // CRITICAL: Check authentication FIRST before doing anything
+        await this.checkAuthenticationStatus();
+        
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return;
+        }
+
+        // Only proceed if authenticated
         this.showDashboard();
         this.bindEvents();
+        
         try {
             this.firebaseService = new FirebaseService();
+            // Set up auth state listener to monitor for logout
+            this.setupAuthStateListener();
         } catch (error) {
             this.showError('Firebase connection failed. Please refresh the page.');
             return;
         }
+        
         this.loadDataProgressively();
     }
 
+    async checkAuthenticationStatus() {
+        try {
+            // Initialize Firebase service first
+            this.firebaseService = new FirebaseService();
+            
+            // Check if user is authenticated
+            this.isAuthenticated = await this.firebaseService.isAuthenticated();
+            
+            // Double-check with current user
+            const currentUser = this.firebaseService.getCurrentUser();
+            
+            if (!this.isAuthenticated || !currentUser) {
+                console.log('❌ User not authenticated, redirecting to login...');
+                this.isAuthenticated = false;
+                return false;
+            }
+            
+            console.log('✅ User authenticated:', currentUser.email);
+            this.isAuthenticated = true;
+            this.authCheckComplete = true;
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Authentication check failed:', error);
+            this.isAuthenticated = false;
+            return false;
+        }
+    }
+
+    setupAuthStateListener() {
+        // Monitor authentication state changes
+        this.firebaseService.onAuthStateChanged((user) => {
+            if (!user && this.authCheckComplete) {
+                // User logged out, redirect immediately
+                console.log('🔓 User logged out, redirecting...');
+                this.redirectToLogin();
+            } else if (user) {
+                this.isAuthenticated = true;
+            }
+        });
+    }
+
+    redirectToLogin() {
+        // Clear any sensitive data
+        this.clearSensitiveData();
+        
+        // Show brief message
+        document.body.innerHTML = `
+            <div class="d-flex justify-content-center align-items-center vh-100">
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5>Redirecting to login...</h5>
+                    <p class="text-muted">Authentication required</p>
+                </div>
+            </div>
+        `;
+        
+        // Redirect after brief delay
+        setTimeout(() => {
+            window.location.href = 'admin-login.html';
+        }, 1000);
+    }
+
+    clearSensitiveData() {
+        // Clear all sensitive data when redirecting
+        this.events = {};
+        this.bookings = [];
+        this.allBookings = [];
+        this.filteredBookings = [];
+        this.currentEventData = null;
+    }
+
+    // Override all data loading methods to check auth first
+    async loadDataProgressively() {
+        // Double-check auth before loading sensitive data
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return;
+        }
+
+        try {
+            const [eventsResult, bookingsResult] = await Promise.all([
+                this.loadEventsAsync(),
+                this.loadBookingsAsync()
+            ]);
+            if (eventsResult) this.handleEventsLoaded();
+            if (bookingsResult) this.handleBookingsLoaded();
+            this.setupRealtimeListeners();
+        } catch (error) {
+            console.error("Error loading dashboard data:", error);
+            this.showError('Error loading dashboard data: ' + (error.message || error));
+        }
+    }
+
+    async loadEventsAsync() {
+        // Check auth before loading
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return false;
+        }
+
+        try {
+            const result = await this.firebaseService.getEvents();
+            if (result && result.success) {
+                this.events = result.events;
+                this.dataLoaded.events = true;
+                return true;
+            }
+            this.events = {};
+            this.dataLoaded.events = true;
+            return true;
+        } catch (error) {
+            console.error("Error loading events:", error);
+            this.showError('Error loading events: ' + (error.message || error));
+            return false;
+        }
+    }
+
+    async loadBookingsAsync() {
+        // Check auth before loading
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return false;
+        }
+
+        try {
+            const result = await this.firebaseService.getBookings();
+            if (result && result.success) {
+                this.allBookings = result.bookings;
+                this.bookings = result.bookings;
+                this.filteredBookings = result.bookings;
+                this.dataLoaded.bookings = true;
+                return true;
+            }
+            this.allBookings = [];
+            this.bookings = [];
+            this.filteredBookings = [];
+            this.dataLoaded.bookings = true;
+            return true;
+        } catch (error) {
+            console.error("Error loading bookings:", error);
+            this.showError('Error loading bookings: ' + (error.message || error));
+            return false;
+        }
+    }
+
+    // Enhanced logout with proper cleanup
+    async handleLogout() {
+        if (!confirm('Are you sure you want to logout?')) {
+            return;
+        }
+
+        try {
+            // Show logout loading
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Logging out...';
+                logoutBtn.disabled = true;
+            }
+
+            // Clear data first
+            this.clearSensitiveData();
+            
+            // Logout from Firebase
+            if (this.firebaseService) {
+                await this.firebaseService.logout();
+            }
+            
+            // Clear authentication state
+            this.isAuthenticated = false;
+            
+        } catch (error) {
+            console.error('Logout error:', error);
+        } finally {
+            // Always redirect to login
+            this.redirectToLogin();
+        }
+    }
+
+    // Add authentication check to all sensitive operations
+    async saveNewEvent() {
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return;
+        }
+
+        const name = document.getElementById('eventName')?.value.trim();
+        const date = document.getElementById('eventDate')?.value;
+        const price = parseInt(document.getElementById('eventPrice')?.value, 10);
+
+        if (!name || !date || isNaN(price) || price < 0) {
+            this.showError('Please fill in all required fields with valid data.');
+            return;
+        }
+
+        try {
+            const eventData = { name, date, price };
+            const result = await this.firebaseService.createEvent(eventData);
+            if (result.success) {
+                const modalEl = document.getElementById('addEventModal');
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                    modal.hide();
+                }
+                const form = document.getElementById('addEventForm');
+                if (form) form.reset();
+                this.showToast('Event created successfully!', 'success');
+                setTimeout(() => {
+                    this.loadEventsAsync().then(() => {
+                        this.handleEventsLoaded();
+                        this.loadDataProgressively();
+                    });
+                }, 500);
+            } else {
+                this.showError('Failed to create event: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            this.showError('Error creating event: ' + error.message);
+        }
+    }
+
+    async cancelBooking(bookingId) {
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return;
+        }
+
+        if (!confirm('Are you sure you want to cancel this booking?')) return;
+        
+        try {
+            const result = await this.firebaseService.updateBooking(bookingId, { status: 'cancelled' });
+            if (result.success) {
+                const booking = this.allBookings.find(b => b.id === bookingId);
+                if (booking) booking.status = 'cancelled';
+                
+                const filteredBooking = this.filteredBookings.find(b => b.id === bookingId);
+                if (filteredBooking) filteredBooking.status = 'cancelled';
+                
+                this.loadRecordsTable();
+                this.updateKPIs();
+                this.updateStatCards();
+                this.showToast('Booking cancelled successfully', 'success');
+            } else {
+                this.showError('Failed to cancel booking');
+            }
+        } catch (error) {
+            this.showError('Error cancelling booking');
+        }
+    }
+
+    // Rest of your existing methods remain the same...
     showDashboard() {
         this.showLoadingStates();
         this.updateCurrentDate();
@@ -55,61 +323,6 @@ class AdminDashboard {
         this.updateElement('availableSeats', '...');
         this.updateElement('bookedSeats', '...');
         this.updateElement('todayRevenue', '₱...');
-    }
-
-    async loadDataProgressively() {
-        try {
-            const [eventsResult, bookingsResult] = await Promise.all([
-                this.loadEventsAsync(),
-                this.loadBookingsAsync()
-            ]);
-            if (eventsResult) this.handleEventsLoaded();
-            if (bookingsResult) this.handleBookingsLoaded();
-            this.setupRealtimeListeners();
-        } catch (error) {
-            console.error("Error loading dashboard data:", error);
-            this.showError('Error loading dashboard data: ' + (error.message || error));
-        }
-    }
-
-    async loadEventsAsync() {
-        try {
-            const result = await this.firebaseService.getEvents();
-            if (result && result.success) {
-                this.events = result.events;
-                this.dataLoaded.events = true;
-                return true;
-            }
-            this.events = {};
-            this.dataLoaded.events = true;
-            return true;
-        } catch (error) {
-            console.error("Error loading events:", error);
-            this.showError('Error loading events: ' + (error.message || error));
-            return false;
-        }
-    }
-
-    async loadBookingsAsync() {
-        try {
-            const result = await this.firebaseService.getBookings();
-            if (result && result.success) {
-                this.allBookings = result.bookings;
-                this.bookings = result.bookings;
-                this.filteredBookings = result.bookings; // Initialize filtered bookings
-                this.dataLoaded.bookings = true;
-                return true;
-            }
-            this.allBookings = [];
-            this.bookings = [];
-            this.filteredBookings = [];
-            this.dataLoaded.bookings = true;
-            return true;
-        } catch (error) {
-            console.error("Error loading bookings:", error);
-            this.showError('Error loading bookings: ' + (error.message || error));
-            return false;
-        }
     }
 
     handleEventsLoaded() {
@@ -152,13 +365,11 @@ class AdminDashboard {
             this.handleAdminEventChange(e.target.value);
         });
 
-        // Add seat map event selector
         const seatMapEventSelect = document.getElementById('seatMapEventSelect');
         if (seatMapEventSelect) seatMapEventSelect.addEventListener('change', (e) => {
             this.handleSeatMapEventChange(e.target.value);
         });
 
-        // Add View Full Seats button event listener
         const viewFullSeatsBtn = document.getElementById('viewFullSeatsBtn');
         if (viewFullSeatsBtn) viewFullSeatsBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -233,13 +444,6 @@ class AdminDashboard {
         }
     }
 
-    async handleLogout() {
-        try {
-            if (this.firebaseService) await this.firebaseService.logout();
-        } catch (error) {}
-        window.location.href = 'admin-login.html';
-    }
-
     switchPage(page) {
         document.querySelectorAll('.page-content').forEach(pageEl => pageEl.classList.add('d-none'));
         const targetPage = document.getElementById(`${page}-page`);
@@ -255,40 +459,33 @@ class AdminDashboard {
     updateStatCards() {
         if (!this.dataLoaded.events || !this.dataLoaded.bookings) return;
         
-        // Get total confirmed bookings across ALL events
         const totalConfirmedBookings = this.allBookings.filter(
             booking => booking.status === 'confirmed'
         ).length;
         
-        // Calculate totals
         const totalEvents = Object.keys(this.events).length;
-        const totalSeats = totalEvents * 100; // 100 seats per event
+        const totalSeats = totalEvents * 100;
         const totalAvailable = Math.max(0, totalSeats - totalConfirmedBookings);
         const totalBooked = totalConfirmedBookings;
         
-        // Calculate total revenue from confirmed bookings
         const totalRevenue = this.allBookings
             .filter(booking => booking.status === 'confirmed')
             .reduce((sum, booking) => sum + (booking.price || 0), 0);
         
-        // Update the display
         this.animateStatUpdate('availableSeats', totalAvailable);
         this.animateStatUpdate('bookedSeats', totalBooked);
         this.animateStatUpdate('todayRevenue', `₱${totalRevenue.toLocaleString()}`);
         this.updateSeatMiniGrid();
     }
 
-    // Main function that updates the seat mini grid display - UPDATED: Removed seat grid label
     updateSeatMiniGrid(selectedEventId = null) {
         const miniGrid = document.getElementById('seatMiniGrid');
         if (!miniGrid) return;
         
-        // Clear the container first
         miniGrid.innerHTML = '';
         
         const totalEvents = Object.keys(this.events).length;
         
-        // Check if there are any events
         if (totalEvents === 0) {
             miniGrid.innerHTML = `
                 <div class="text-center py-3" style="grid-column: 1 / -1;">
@@ -299,42 +496,31 @@ class AdminDashboard {
             return;
         }
         
-        // Determine which event to show
         let eventToShow;
         if (selectedEventId && this.events[selectedEventId]) {
-            // Use the selected event from dropdown
             eventToShow = this.events[selectedEventId];
         } else if (!selectedEventId) {
-            // If no event selected, show placeholder
             this.showEmptySeatMap();
             return;
         } else {
-            // Invalid event ID
             return;
         }
         
         if (eventToShow) {
-            // Get all confirmed bookings for this event
             const eventBookings = this.allBookings.filter(
                 booking => booking.eventId === eventToShow.id && booking.status === 'confirmed'
             );
             
-            // Extract seat numbers that are booked
             const bookedSeats = eventBookings.map(b => b.seatNumber);
             
-            // Create 50 mini seats (5 rows x 10 columns)
             for (let i = 1; i <= 50; i++) {
                 const miniSeat = document.createElement('div');
-                
-                // Determine if seat is booked or available
                 const isBooked = bookedSeats.includes(i);
                 
-                // Set CSS classes and content
                 miniSeat.className = `mini-seat ${isBooked ? 'booked' : 'available'}`;
                 miniSeat.textContent = i;
                 miniSeat.title = `Seat ${i} - ${isBooked ? 'Booked' : 'Available'}`;
                 
-                // Add to grid
                 miniGrid.appendChild(miniSeat);
             }
         }
@@ -373,52 +559,7 @@ class AdminDashboard {
         });
     }
 
-    async saveNewEvent() {
-        const name = document.getElementById('eventName')?.value.trim();
-        const date = document.getElementById('eventDate')?.value;
-        const price = parseInt(document.getElementById('eventPrice')?.value, 10);
-
-        if (!name || !date || isNaN(price) || price < 0) {
-            this.showError('Please fill in all required fields with valid data.');
-            return;
-        }
-
-        try {
-            const eventData = {
-                name,
-                date,
-                price
-            };
-            const result = await this.firebaseService.createEvent(eventData);
-            if (result.success) {
-                // Close the modal
-                const modalEl = document.getElementById('addEventModal');
-                if (modalEl) {
-                    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-                    modal.hide();
-                }
-                // Reset the form
-                const form = document.getElementById('addEventForm');
-                if (form) form.reset();
-                this.showToast('Event created successfully!', 'success');
-                // Refresh stats and event lists
-                setTimeout(() => {
-                    this.loadEventsAsync().then(() => {
-                        this.handleEventsLoaded();
-                        this.loadDataProgressively();
-                    });
-                }, 500);
-            } else {
-                this.showError('Failed to create event: ' + (result.error || 'Unknown error'));
-            }
-        } catch (error) {
-            this.showError('Error creating event: ' + error.message);
-        }
-    }
-
-    // Helper method to safely get booking date
     getBookingDate(booking) {
-        // Try different possible date fields
         const possibleDates = [
             booking.createdAt,
             booking.timestamp,
@@ -429,11 +570,9 @@ class AdminDashboard {
         
         for (const dateValue of possibleDates) {
             if (dateValue) {
-                // Handle Firebase Timestamp objects
                 if (dateValue.seconds) {
                     return new Date(dateValue.seconds * 1000);
                 }
-                // Handle regular date strings/objects
                 const date = new Date(dateValue);
                 if (!isNaN(date.getTime())) {
                     return date;
@@ -441,11 +580,9 @@ class AdminDashboard {
             }
         }
         
-        // If no valid date found, return current date as fallback
         return new Date();
     }
 
-    // Update the loadRecentBookings method to use enhanced styling
     loadRecentBookings() {
         const container = document.getElementById('upcomingBookings');
         if (!container) return;
@@ -477,7 +614,7 @@ class AdminDashboard {
                 const dateB = new Date(eventB.date);
                 return dateA - dateB;
             })
-            .slice(0, 8); // Show more items since we have better layout
+            .slice(0, 8);
         
         if (upcomingBookings.length === 0) {
             container.innerHTML = `
@@ -521,7 +658,6 @@ class AdminDashboard {
         }).join('');
     }
 
-    // Update the loadRecentActivity method for bigger, better content
     loadRecentActivity() {
         const container = document.getElementById('recentActivity');
         if (!container) return;
@@ -542,7 +678,7 @@ class AdminDashboard {
                 const dateB = this.getBookingDate(b);
                 return dateB - dateA;
             })
-            .slice(0, 10) // Show more items for scrolling
+            .slice(0, 10)
             .map(booking => {
                 const bookingDate = this.getBookingDate(booking);
                 const timeAgo = this.getTimeAgo(bookingDate);
@@ -597,7 +733,6 @@ class AdminDashboard {
         `).join('');
     }
 
-    // Handle seat map event selection
     handleSeatMapEventChange(eventId) {
         if (!eventId) {
             this.showEmptySeatMap();
@@ -669,14 +804,13 @@ class AdminDashboard {
             }
             return;
         }
-        this.filteredBookings = [...this.allBookings]; // Reset filters when loading
+        this.filteredBookings = [...this.allBookings];
         this.updateKPIs();
         this.loadRecordsTable();
         this.updateEventFilter();
     }
 
     updateKPIs() {
-        // Use filtered bookings for KPIs when filters are applied
         const bookingsToAnalyze = this.filteredBookings;
         const totalBookings = bookingsToAnalyze.length;
         const confirmed = bookingsToAnalyze.filter(b => b.status === 'confirmed').length;
@@ -743,22 +877,18 @@ class AdminDashboard {
         }).join('');
     }
 
-    // ENHANCED: Apply Record Filters - Now includes ID and email search
     applyRecordFilters() {
         const recordTypeFilter = document.getElementById('recordTypeFilter')?.value || 'all';
         const dateFrom = document.getElementById('dateFrom')?.value;
         const dateTo = document.getElementById('dateTo')?.value;
         const searchRecords = document.getElementById('searchRecords')?.value.toLowerCase() || '';
 
-        // Start with all bookings
         let filtered = [...this.allBookings];
 
-        // Filter by record type (status)
         if (recordTypeFilter !== 'all') {
             filtered = filtered.filter(booking => booking.status === recordTypeFilter);
         }
 
-        // Filter by date range
         if (dateFrom) {
             const fromDate = new Date(dateFrom);
             fromDate.setHours(0, 0, 0, 0);
@@ -778,7 +908,6 @@ class AdminDashboard {
             });
         }
 
-        // ENHANCED: Filter by search term (ID, customer name, email, seat, or event name)
         if (searchRecords) {
             filtered = filtered.filter(booking => {
                 const bookingId = (booking.id || '').toLowerCase();
@@ -795,7 +924,6 @@ class AdminDashboard {
             });
         }
 
-        // Update filtered bookings and refresh display
         this.filteredBookings = filtered;
         this.updateKPIs();
         this.loadRecordsTable();
@@ -803,7 +931,6 @@ class AdminDashboard {
         this.showToast(`Found ${filtered.length} records`, 'info');
     }
 
-    // FIXED: Reset Record Filters
     resetRecordFilters() {
         const recordTypeFilter = document.getElementById('recordTypeFilter');
         const dateFrom = document.getElementById('dateFrom');
@@ -815,7 +942,6 @@ class AdminDashboard {
         if (dateTo) dateTo.value = '';
         if (searchRecords) searchRecords.value = '';
         
-        // Reset to show all bookings
         this.filteredBookings = [...this.allBookings];
         this.updateKPIs();
         this.loadRecordsTable();
@@ -861,6 +987,11 @@ class AdminDashboard {
     }
 
     async viewBookingDetails(bookingId) {
+        if (!this.isAuthenticated) {
+            this.redirectToLogin();
+            return;
+        }
+
         const booking = this.allBookings.find(b => b.id === bookingId);
         if (booking) {
             const eventName = this.events[booking.eventId]?.name || 'Unknown Event';
@@ -880,66 +1011,35 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
         }
     }
 
-    async cancelBooking(bookingId) {
-        if (!confirm('Are you sure you want to cancel this booking?')) return;
-        try {
-            const result = await this.firebaseService.updateBooking(bookingId, { status: 'cancelled' });
-            if (result.success) {
-                const booking = this.allBookings.find(b => b.id === bookingId);
-                if (booking) booking.status = 'cancelled';
-                
-                // Update filtered bookings as well
-                const filteredBooking = this.filteredBookings.find(b => b.id === bookingId);
-                if (filteredBooking) filteredBooking.status = 'cancelled';
-                
-                this.loadRecordsTable();
-                this.updateKPIs();
-                this.updateStatCards();
-                this.showToast('Booking cancelled successfully', 'success');
-            } else {
-                this.showError('Failed to cancel booking');
-            }
-        } catch (error) {
-            this.showError('Error cancelling booking');
-        }
-    }
-
     getTimeAgo(date) {
-        // Ensure we have a valid date
         if (!date || isNaN(date.getTime())) {
             return 'Unknown';
         }
         
         const now = new Date();
         
-        // Handle Firebase Timestamp objects
         if (date.seconds) {
             date = new Date(date.seconds * 1000);
         }
         
-        // Calculate difference in days using date objects (not just milliseconds)
         const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const bookingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const diffDays = Math.floor((nowDate - bookingDate) / (1000 * 60 * 60 * 24));
         
-        // For more precise timing within the same day
         const diffMs = now - date;
         const diffMins = Math.floor(diffMs / 60000);
         const diffHours = Math.floor(diffMs / 3600000);
         
-        // Handle future dates
         if (diffMs < 0) {
             return 'Future';
         }
         
-        // Same day calculations
         if (diffDays === 0) {
             if (diffMins < 1) return 'Just now';
             else if (diffMins < 60) return `${diffMins}m ago`;
             else return `${diffHours}h ago`;
         }
         
-        // Different day calculations
         if (diffDays === 1) return '1 day ago';
         else if (diffDays < 7) return `${diffDays} days ago`;
         else if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
@@ -947,7 +1047,6 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
         else return `${Math.floor(diffDays / 365)} years ago`;
     }
 
-    // Helper function to format event dates consistently
     formatEventDate(dateString) {
         if (!dateString) return 'Unknown Date';
         
