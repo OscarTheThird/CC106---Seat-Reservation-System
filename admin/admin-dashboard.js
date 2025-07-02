@@ -661,7 +661,7 @@ class AdminDashboard {
             const tbody = document.getElementById('recordsTableBody');
             if (tbody) {
                 tbody.innerHTML = `
-                    <tr><td colspan="8" class="text-center">
+                    <tr><td colspan="9" class="text-center">
                         <div class="spinner-border spinner-border-sm" role="status"></div>
                         <span class="ms-2">Loading records...</span>
                     </td></tr>
@@ -710,7 +710,7 @@ class AdminDashboard {
         if (!tbody) return;
         
         if (this.filteredBookings.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No booking records found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No booking records found</td></tr>';
             return;
         }
         
@@ -723,6 +723,7 @@ class AdminDashboard {
                     <td>${booking.id}</td>
                     <td>Booking</td>
                     <td>${booking.fullName}</td>
+                    <td>${booking.email || 'N/A'}</td>
                     <td>Seat ${booking.seatNumber}</td>
                     <td>${bookingDate.toLocaleDateString()}</td>
                     <td><span class="status-badge status-${booking.status}">${booking.status}</span></td>
@@ -742,7 +743,7 @@ class AdminDashboard {
         }).join('');
     }
 
-    // FIXED: Apply Record Filters
+    // ENHANCED: Apply Record Filters - Now includes ID and email search
     applyRecordFilters() {
         const recordTypeFilter = document.getElementById('recordTypeFilter')?.value || 'all';
         const dateFrom = document.getElementById('dateFrom')?.value;
@@ -777,14 +778,18 @@ class AdminDashboard {
             });
         }
 
-        // Filter by search term (customer name or seat)
+        // ENHANCED: Filter by search term (ID, customer name, email, seat, or event name)
         if (searchRecords) {
             filtered = filtered.filter(booking => {
+                const bookingId = (booking.id || '').toLowerCase();
                 const customerName = (booking.fullName || '').toLowerCase();
+                const customerEmail = (booking.email || '').toLowerCase();
                 const seatNumber = `seat ${booking.seatNumber}`.toLowerCase();
                 const eventName = (this.events[booking.eventId]?.name || '').toLowerCase();
                 
-                return customerName.includes(searchRecords) || 
+                return bookingId.includes(searchRecords) ||
+                       customerName.includes(searchRecords) || 
+                       customerEmail.includes(searchRecords) ||
                        seatNumber.includes(searchRecords) ||
                        eventName.includes(searchRecords);
             });
