@@ -11,6 +11,7 @@ class AdminDashboard {
         this.currentEventId = null;
         this.currentEventData = null;
         this.listenersSetup = false;
+        this.authCheckInterval = null;
         this.dataLoaded = {
             events: false,
             bookings: false
@@ -19,8 +20,16 @@ class AdminDashboard {
     }
 
     async init() {
+        // SECURITY: First check authentication before initializing anything
+        if (!this.checkAuthenticationStatus()) {
+            this.redirectToLogin();
+            return;
+        }
+
         this.showDashboard();
         this.bindEvents();
+        this.setupSecurityMonitoring();
+        
         try {
             this.firebaseService = new FirebaseService();
         } catch (error) {
@@ -28,6 +37,214 @@ class AdminDashboard {
             return;
         }
         this.loadDataProgressively();
+    }
+
+    checkAuthenticationStatus() {
+        try {
+            // Check multiple authentication indicators
+            const firebaseAuth = this.firebaseService?.isAuthenticated();
+            const hasAuthToken = this.hasValidAuthSession();
+            const hasLoginTimestamp = this.hasValidLoginTimestamp();
+            
+            console.log('🔍 Auth Check:', {
+                firebaseAuth,
+                hasAuthToken,
+                hasLoginTimestamp
+            });
+            
+            // All checks must pass
+            if (firebaseAuth && hasAuthToken && hasLoginTimestamp) {
+                console.log('✅ Authentication verified');
+                return true;
+            }
+            
+            console.log('❌ Authentication failed');
+            this.clearAllAuthData();
+            return false;
+        } catch (error) {
+            console.error('❌ Auth check error:', error);
+            this.clearAllAuthData();
+            return false;
+        }
+    }
+
+    hasValidAuthSession() {
+        try {
+            const authToken = localStorage.getItem('adminAuthToken') || sessionStorage.getItem('adminAuthToken');
+            
+            if (!authToken) {
+                return false;
+            }
+            
+            const authData = JSON.parse(authToken);
+            
+            // Verify auth data structure and content
+            if (!authData.uid || !authData.email || !authData.timestamp || !authData.sessionId) {
+                console.log('🔍 Invalid auth data structure');
+                return false;
+            }
+            
+            // Check if auth data is not too old (24 hours)
+            const now = Date.now();
+            const authAge = now - authData.timestamp;
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+            
+            if (authAge > maxAge) {
+                console.log('⏰ Auth token expired');
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.log('❌ Error validating auth session:', error);
+            return false;
+        }
+    }
+
+    hasValidLoginTimestamp() {
+        try {
+            const loginTimestamp = localStorage.getItem('adminLoginTimestamp');
+            
+            if (!loginTimestamp) {
+                return false;
+            }
+            
+            const timestamp = parseInt(loginTimestamp);
+            const now = Date.now();
+            const sessionAge = now - timestamp;
+            const maxSessionAge = 24 * 60 * 60 * 1000; // 24 hours
+            
+            if (sessionAge > maxSessionAge) {
+                console.log('⏰ Login session expired');
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.log('❌ Error validating login timestamp:', error);
+            return false;
+        }
+    }
+
+    setupSecurityMonitoring() {
+        // Continuous authentication monitoring
+        this.authCheckInterval = setInterval(() => {
+            if (!this.checkAuthenticationStatus()) {
+                console.log('🚨 Authentication lost, redirecting to login...');
+                this.redirectToLogin();
+            }
+        }, 5000); // Check every 5 seconds
+        
+        // Monitor page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                // When user returns to tab, verify auth
+                if (!this.checkAuthenticationStatus()) {
+                    this.redirectToLogin();
+                }
+            }
+        });
+        
+        // Monitor browser navigation attempts
+        window.addEventListener('popstate', (e) => {
+            // Prevent unauthorized navigation
+            if (!this.checkAuthenticationStatus()) {
+                e.preventDefault();
+                this.redirectToLogin();
+            }
+        });
+        
+        // Monitor storage changes (if auth is cleared in another tab)
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'adminAuthToken' || e.key === 'adminLoginTimestamp') {
+                if (!e.newValue) {
+                    // Auth was cleared in another tab
+                    console.log('🚨 Auth cleared in another tab');
+                    this.redirectToLogin();
+                }
+            }
+        });
+
+        // Prevent right-click context menu on production (optional)
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            document.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+            });
+        }
+
+        // Monitor for developer tools (basic detection)
+        this.setupDevToolsDetection();
+    }
+
+    setupDevToolsDetection() {
+        // Basic dev tools detection (can be bypassed but adds a layer)
+        let devtools = {
+            open: false,
+            orientation: null
+        };
+        
+        setInterval(() => {
+            if (window.outerHeight - window.innerHeight > 200 || window.outerWidth - window.innerWidth > 200) {
+                if (!devtools.open) {
+                    devtools.open = true;
+                    console.log('🔧 Developer tools detected');
+                    // Optional: Log this event or take action
+                }
+            } else {
+                devtools.open = false;
+            }
+        }, 500);
+    }
+
+    clearAllAuthData() {
+        try {
+            // Clear all possible auth storage
+            localStorage.removeItem('adminAuthToken');
+            sessionStorage.removeItem('adminAuthToken');
+            localStorage.removeItem('adminLoginTimestamp');
+            sessionStorage.removeItem('adminLoginTimestamp');
+            
+            // Clear any additional session data
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('admin') || key.startsWith('firebase')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            Object.keys(sessionStorage).forEach(key => {
+                if (key.startsWith('admin') || key.startsWith('firebase')) {
+                    sessionStorage.removeItem(key);
+                }
+            });
+            
+        } catch (error) {
+            console.warn('Error clearing auth data:', error);
+        }
+    }
+
+    redirectToLogin() {
+        // Clear all auth data before redirect
+        this.clearAllAuthData();
+        
+        // Clear intervals
+        if (this.authCheckInterval) {
+            clearInterval(this.authCheckInterval);
+        }
+        
+        // Sign out from Firebase
+        if (this.firebaseService) {
+            this.firebaseService.signOut().catch(() => {
+                // Ignore errors during logout
+            });
+        }
+        
+        // Show user-friendly message
+        this.showToast('Session expired. Please login again.', 'warning');
+        
+        // Use replace to prevent back navigation
+        setTimeout(() => {
+            window.location.replace('admin-login.html');
+        }, 1000);
     }
 
     showDashboard() {
@@ -235,12 +452,49 @@ class AdminDashboard {
 
     async handleLogout() {
         try {
-            if (this.firebaseService) await this.firebaseService.logout();
-        } catch (error) {}
-        window.location.href = 'admin-login.html';
+            console.log('🔓 Logging out admin...');
+            
+            // Show logout confirmation
+            if (!confirm('Are you sure you want to logout?')) {
+                return;
+            }
+            
+            // Clear intervals
+            if (this.authCheckInterval) {
+                clearInterval(this.authCheckInterval);
+            }
+            
+            // Sign out from Firebase
+            if (this.firebaseService) {
+                await this.firebaseService.signOut();
+            }
+            
+            // Clear all authentication data
+            this.clearAllAuthData();
+            
+            // Show logout message
+            this.showToast('Logged out successfully', 'success');
+            
+            // Redirect to login page using replace to prevent back navigation
+            setTimeout(() => {
+                window.location.replace('admin-login.html');
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Logout error:', error);
+            // Force logout even if there's an error
+            this.clearAllAuthData();
+            window.location.replace('admin-login.html');
+        }
     }
 
     switchPage(page) {
+        // Verify auth before switching pages
+        if (!this.checkAuthenticationStatus()) {
+            this.redirectToLogin();
+            return;
+        }
+        
         document.querySelectorAll('.page-content').forEach(pageEl => pageEl.classList.add('d-none'));
         const targetPage = document.getElementById(`${page}-page`);
         if (targetPage) targetPage.classList.remove('d-none');
@@ -374,6 +628,12 @@ class AdminDashboard {
     }
 
     async saveNewEvent() {
+        // Verify auth before creating events
+        if (!this.checkAuthenticationStatus()) {
+            this.redirectToLogin();
+            return;
+        }
+        
         const name = document.getElementById('eventName')?.value.trim();
         const date = document.getElementById('eventDate')?.value;
         const price = parseInt(document.getElementById('eventPrice')?.value, 10);
@@ -1047,8 +1307,50 @@ Price: ₱${(booking.price || 0).toLocaleString()}`);
             console.error('Error generating seat layout:', error);
         }
     }
+
+    // Cleanup method called when dashboard is destroyed
+    destroy() {
+        if (this.authCheckInterval) {
+            clearInterval(this.authCheckInterval);
+        }
+    }
 }
 
+// Initialize dashboard with enhanced security
 document.addEventListener('DOMContentLoaded', () => {
-    window.adminDashboard = new AdminDashboard();
+    console.log('🚀 Initializing Secure Admin Dashboard...');
+    
+    // Create dashboard instance
+    const adminDashboard = new AdminDashboard();
+    
+    // Make it globally available
+    window.adminDashboard = adminDashboard;
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (window.adminDashboard) {
+            window.adminDashboard.destroy();
+        }
+    });
+    
+    // Additional security: Prevent common navigation attempts
+    window.addEventListener('keydown', (e) => {
+        // Disable F12 (Developer Tools) on production
+        if (e.key === 'F12' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            e.preventDefault();
+            return false;
+        }
+        
+        // Disable Ctrl+Shift+I (Developer Tools)
+        if (e.ctrlKey && e.shiftKey && e.key === 'I' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            e.preventDefault();
+            return false;
+        }
+        
+        // Disable Ctrl+U (View Source)
+        if (e.ctrlKey && e.key === 'u' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+            e.preventDefault();
+            return false;
+        }
+    });
 });

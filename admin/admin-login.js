@@ -4,6 +4,7 @@ class AdminLogin {
     constructor() {
         this.firebaseService = new FirebaseService();
         this.isProcessing = false;
+        this.authCheckInterval = null;
         this.init();
     }
 
@@ -12,6 +13,56 @@ class AdminLogin {
         this.checkAuthStatus();
         this.setupAuthListener();
         this.prefillDemoCredentials(); // Auto-fill demo credentials for convenience
+        this.setupSecurityChecks();
+    }
+
+    setupSecurityChecks() {
+        // Clear any stored auth tokens/sessions when on login page
+        this.clearPreviousSession();
+        
+        // Set up periodic auth checking
+        this.authCheckInterval = setInterval(() => {
+            this.checkAuthStatus();
+        }, 2000); // Check every 2 seconds
+        
+        // Handle browser back/forward navigation
+        window.addEventListener('popstate', () => {
+            this.handleNavigationAttempt();
+        });
+        
+        // Handle page visibility changes (tab switching)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                this.checkAuthStatus();
+            }
+        });
+    }
+
+    clearPreviousSession() {
+        // Clear any existing authentication state
+        try {
+            localStorage.removeItem('adminAuthToken');
+            sessionStorage.removeItem('adminAuthToken');
+            localStorage.removeItem('adminLoginTimestamp');
+            sessionStorage.removeItem('adminLoginTimestamp');
+            
+            // Clear any Firebase auth persistence
+            if (this.firebaseService && this.firebaseService.auth) {
+                this.firebaseService.signOut().catch(() => {
+                    // Ignore errors during cleanup
+                });
+            }
+        } catch (error) {
+            console.log('Session cleanup completed');
+        }
+    }
+
+    handleNavigationAttempt() {
+        // If user tries to navigate back to dashboard without being logged in
+        if (!this.firebaseService.isAuthenticated()) {
+            // Force redirect to login page
+            window.location.replace('admin-login.html');
+        }
     }
 
     prefillDemoCredentials() {
@@ -26,13 +77,50 @@ class AdminLogin {
     }
 
     setupAuthListener() {
-        // Override the auth state change method
+        // Enhanced auth state change monitoring
         this.firebaseService.onAuthStateChanged = (user) => {
             if (user && window.location.pathname.includes('admin-login.html')) {
                 console.log('✅ User authenticated, redirecting to dashboard...');
+                this.setAuthSession(user);
                 this.redirectToDashboard();
+            } else if (!user && window.location.pathname.includes('admin-login.html')) {
+                console.log('❌ No authenticated user on login page');
+                this.clearAuthSession();
             }
         };
+    }
+
+    setAuthSession(user) {
+        // Set secure session markers
+        const authData = {
+            uid: user.uid,
+            email: user.email,
+            timestamp: Date.now(),
+            sessionId: this.generateSessionId()
+        };
+        
+        try {
+            localStorage.setItem('adminAuthToken', JSON.stringify(authData));
+            sessionStorage.setItem('adminAuthToken', JSON.stringify(authData));
+            localStorage.setItem('adminLoginTimestamp', Date.now().toString());
+        } catch (error) {
+            console.warn('Could not set auth session:', error);
+        }
+    }
+
+    clearAuthSession() {
+        try {
+            localStorage.removeItem('adminAuthToken');
+            sessionStorage.removeItem('adminAuthToken');
+            localStorage.removeItem('adminLoginTimestamp');
+            sessionStorage.removeItem('adminLoginTimestamp');
+        } catch (error) {
+            console.warn('Could not clear auth session:', error);
+        }
+    }
+
+    generateSessionId() {
+        return Math.random().toString(36).substring(2) + Date.now().toString(36);
     }
 
     bindEvents() {
@@ -68,13 +156,62 @@ class AdminLogin {
                 this.prefillDemoCredentials();
             });
         }
+
+        // Prevent form resubmission on page reload
+        window.addEventListener('beforeunload', () => {
+            this.isProcessing = false;
+        });
     }
 
     checkAuthStatus() {
-        // Check if user is already logged in
-        if (this.firebaseService.isAuthenticated()) {
-            console.log('👤 User already authenticated');
+        // Enhanced authentication checking
+        const isAuthenticated = this.firebaseService.isAuthenticated();
+        const hasValidSession = this.hasValidAuthSession();
+        
+        if (isAuthenticated && hasValidSession) {
+            console.log('👤 User already authenticated with valid session');
             this.redirectToDashboard();
+        } else if (isAuthenticated && !hasValidSession) {
+            console.log('⚠️ User authenticated but session invalid, clearing...');
+            this.firebaseService.signOut();
+            this.clearAuthSession();
+        } else {
+            console.log('❌ No valid authentication found');
+            this.clearAuthSession();
+        }
+    }
+
+    hasValidAuthSession() {
+        try {
+            const authToken = localStorage.getItem('adminAuthToken') || sessionStorage.getItem('adminAuthToken');
+            const loginTimestamp = localStorage.getItem('adminLoginTimestamp');
+            
+            if (!authToken || !loginTimestamp) {
+                return false;
+            }
+            
+            const authData = JSON.parse(authToken);
+            const timestamp = parseInt(loginTimestamp);
+            const now = Date.now();
+            
+            // Check if session is less than 24 hours old
+            const sessionValidityPeriod = 24 * 60 * 60 * 1000; // 24 hours
+            
+            if (now - timestamp > sessionValidityPeriod) {
+                console.log('⏰ Auth session expired');
+                return false;
+            }
+            
+            // Verify auth data integrity
+            if (!authData.uid || !authData.email || !authData.timestamp) {
+                console.log('🔍 Invalid auth data structure');
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.log('❌ Error validating auth session:', error);
+            return false;
         }
     }
 
@@ -119,11 +256,17 @@ class AdminLogin {
 
             console.log('🔐 Attempting login for:', email);
 
+            // Clear any previous session before login
+            this.clearAuthSession();
+
             // Attempt Firebase authentication
             const result = await this.firebaseService.loginAdmin(email, password);
 
             if (result.success) {
                 console.log('✅ Login successful');
+                
+                // Set new secure session
+                this.setAuthSession(result.user || { uid: 'admin', email });
                 
                 // If it's a new user (demo admin just created), initialize sample data
                 if (result.isNewUser) {
@@ -177,6 +320,11 @@ class AdminLogin {
         // Show success toast
         this.showToast('Login successful! Redirecting to dashboard...', 'success');
 
+        // Clear the auth check interval since we're redirecting
+        if (this.authCheckInterval) {
+            clearInterval(this.authCheckInterval);
+        }
+
         // Redirect after short delay
         setTimeout(() => {
             this.redirectToDashboard();
@@ -188,6 +336,9 @@ class AdminLogin {
         const userFriendlyMessage = this.parseFirebaseError(errorMessage);
         this.showError(userFriendlyMessage);
         this.shakeCard();
+        
+        // Clear any partial session data
+        this.clearAuthSession();
     }
 
     parseFirebaseError(errorMessage) {
@@ -295,7 +446,21 @@ class AdminLogin {
 
     redirectToDashboard() {
         console.log('🔄 Redirecting to admin dashboard...');
-        window.location.href = 'admin-dashboard.html';
+        
+        // Clear the auth check interval
+        if (this.authCheckInterval) {
+            clearInterval(this.authCheckInterval);
+        }
+        
+        // Use replace instead of href to prevent back navigation
+        window.location.replace('admin-dashboard.html');
+    }
+
+    // Cleanup method
+    destroy() {
+        if (this.authCheckInterval) {
+            clearInterval(this.authCheckInterval);
+        }
     }
 
     // Quick demo login method (for testing)
@@ -313,6 +478,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Make it globally available for debugging
     window.adminLogin = adminLogin;
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (window.adminLogin) {
+            window.adminLogin.destroy();
+        }
+    });
 });
 
 // Add shake animation CSS
