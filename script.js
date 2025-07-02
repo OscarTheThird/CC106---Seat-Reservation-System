@@ -1,4 +1,3 @@
-
 import FirebaseService from './firebase-config.js';
 
 class SeatReservationSystem {
